@@ -16,13 +16,10 @@ Embedded C firmware for the Urban Micro Farming IoT devices. Communicates with M
 
 - Arduino Mega2560 board
 - Arduino Uno Multifunctional Expansion Shield
-- VIA University expansion board
 - ESP8266 WiFi module (WiFi + MQTT connectivity)
-- HC-SR501 PIR sensor (motion detection)
-- HC-SR04 Proximity sensor (ultrasonic distance)
 - KY-018 LDR module (light sensor)
 - DHT11 temperature & humidity sensor
-- Capacitive soil moisture sensor
+- Soil moisture sensor
 - SG90 Servo (motor control)
 
 See detailed hardware documentation in the `doc/` folder.
