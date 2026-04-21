@@ -107,7 +107,7 @@ git push -u origin release/v1.0.0
 
 ---
 
-## 📝 Commit Message Convention
+##  Commit Message Convention
 
 Follow **Conventional Commits** format:
 
@@ -235,7 +235,7 @@ git pull origin develop
 
 ---
 
-## 🚀 Release Process
+##  Release Process
 
 ### Step 1: Create Release Branch
 
@@ -292,7 +292,7 @@ Create PR: `release/v1.0.0` → `develop`
 
 ---
 
-## 🆘 Hotfix Process (Critical Issues)
+##  Hotfix Process (Critical Issues)
 
 **When production firmware has a critical bug** (e.g., MQTT connection loss, sensor data corruption):
 
@@ -325,7 +325,7 @@ git push -u origin hotfix/mqtt-broker-timeout
 
 ---
 
-## 📊 Branch Naming Quick Reference
+## Branch Naming Quick Reference
 
 | Branch Type | Pattern | Example | From | To |
 |------------|---------|---------|------|-----|
@@ -337,7 +337,7 @@ git push -u origin hotfix/mqtt-broker-timeout
 
 ---
 
-## 🛡️ Branch Protection Rules (GitHub)
+##  Branch Protection Rules (GitHub)
 
 ### For `main` branch:
 - ✅ Require pull request reviews (1 reviewer)
@@ -353,7 +353,7 @@ git push -u origin hotfix/mqtt-broker-timeout
 
 ---
 
-## 👥 Team Roles
+##  Team Roles
 
 | Role | Responsibilities |
 |------|-----------------|
@@ -364,7 +364,7 @@ git push -u origin hotfix/mqtt-broker-timeout
 
 ---
 
-## ✅ Setup Checklist
+##  Setup Checklist
 
 - [ ] Repository created on GitHub: `VIA_Urban_MicroFarm_IoT_Team`
 - [ ] `main` branch exists and protected
@@ -380,7 +380,7 @@ git push -u origin hotfix/mqtt-broker-timeout
 
 ---
 
-## 📚 References
+##  References
 
 - **Git Flow**: https://nvie.com/posts/a-successful-git-branching-model/
 - **Conventional Commits**: https://www.conventionalcommits.org/
@@ -392,4 +392,4 @@ git push -u origin hotfix/mqtt-broker-timeout
 
 **Last Updated**: April 16, 2026  
 **Version**: 1.0.0  
-**Owner**: IoT Team Lead (@DanWeld)
+**Owner**: IoT Team SEP4
