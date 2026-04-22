@@ -1,63 +1,62 @@
 /*****************************************************************************
- * main.c
- *  Main application file for the IoT hardware drivers demo.
- *  This file initializes all the hardware drivers and demonstrates their
- *  functionality.
- *  Push button 2 on the shield during reset to enter continious sensor
- *  reading mode. Otherwise the program will run an interactive demo that
- *  allows you to test each driver individually by sending commands over UART.
- *  See interactive.c for details.
- * 
- *  Author:  Erland Larsen
- *  Date:    2026-03-17
- *  Project: SPE4_API
+ *  Main application file for the IoT hardware drivers.
+ *  This file initializes all the hardware drivers and demonstrates their functionality.
  *****************************************************************************/
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
 #include <stdio.h>
-#include "interactive.h"
-#include "button.h"
 #include "uart_stdio.h"
 #include "led.h"
-#include "pir.h"
 #include "display.h"
 #include "wifi.h"
-#include "button.h"
-#include "buzzer.h"
 #include "dht11.h"
-#include "proximity.h"
-#include "servo.h"
 #include "adc.h"
 #include "light.h"
 #include "soil.h"
-#include "tone.h"
-#include "timer.h"
-//#include "adxl345.h"
 
-uint8_t humidity_integer, humidity_decimal, temperature_integer, temperature_decimal;
-static int8_t _led_no = 0;
-//static int16_t _x, _y, _z;
-
-void timer_callback(uint8_t id)
+// Reads all sensor values and updates the 7-segment display. read_sensors() = get data
+void read_sensors(uint8_t *temp_int, uint8_t *temp_dec,
+                  uint8_t *hum_int, uint8_t *hum_dec,
+                  uint16_t *light_value, uint16_t *soil_value)
 {
-    led_toggle((_led_no%4) + 1); // Toggle LEDs in sequence 1-4
-    _led_no++;
+    dht11_get(hum_int, hum_dec, temp_int, temp_dec);
+    *light_value = light_measure_raw();
+    *soil_value = soil_measure_raw(ADC_PK0);
+
+    display_setDecimals(1);
+    display_int((*temp_int) * 10 + (*temp_dec));
+}
+
+// Builds the telemetry payload in the agreed JSON contract format. build_payload() = package data
+void build_payload(char *payload, size_t size,
+                   uint16_t setup_id,
+                   uint8_t temp_int, uint8_t temp_dec,
+                   uint8_t hum_int, uint8_t hum_dec,
+                   uint16_t light_value, uint16_t soil_value)
+{
+    uint16_t temperature_x10 = temp_int * 10 + temp_dec;
+    uint16_t humidity_x10 = hum_int * 10 + hum_dec;
+
+    snprintf(payload, size,
+             "{\"setup_id\":%u,\"sensor_id\":null,\"temperature\":%u,\"humidity\":%u,\"light\":%u,\"soil_moisture\":%u}",
+             setup_id, temperature_x10, humidity_x10, light_value, soil_value);
+}
+
+// Sends the payload through UART for now and can later be replaced by Wi-Fi/MQTT sending. send_payload() = publish data to MQTT broker
+void send_payload(const char *payload)
+{
+    printf("%s\n", payload); // For now, just print to UART. Replace with Wi-Fi/MQTT sending later.
 }
 
 int main(void)
 {
-    led_init();
-    button_init();
+    uint16_t setup_id = 1;
+
     display_init();
-    proximity_init();
     light_init();
     soil_init(ADC_PK0);
-    pir_init(pir_callback);
-//    tone_init();
     wifi_init();
-    servo_init(PWM_NORMAL);
-//    adxl345_init();
 
     if (UART_OK != uart_stdio_init(115200))
     {
@@ -66,52 +65,29 @@ int main(void)
             ;
     }
     sei(); // Enable global interrupts
-    printf("VIA UNIVERSITY COLLEGE SEP4 IoT Hardware DRIVERS DEMO\n");
-    if(!button_get(2))
-    {
-        interactive_demo();
-    }
-
-    timer_create_sw(timer_callback, 1000); // Create a timer that toggles an LED every 1 second
-
-    tone_play_starwars();
-
-    // Test servo by sweeping from -90 to +90 degrees and back
-    servo_start();
-    for(int i=-90; i<=90; i+=10)
-    {
-        servo_setAngle(PWM_A, (int8_t)i);
-        printf("Servo set to %d degrees.\n", i);
-        _delay_ms(100);
-    }
-    servo_stop();
-
-    // Test WiFi by sending AT command and printing response
-    if(WIFI_OK == wifi_command_AT())
-    {
-        printf("WiFi module responded to AT command.\n");
-    }
-    else
-    {
-        printf("WiFi module did not respond to AT command.\n");
-    }
-
-    buzzer_beep();
 
     // Continuous sensor readings
     while (1)
     {
-        dht11_get(&humidity_integer, &humidity_decimal, &temperature_integer, &temperature_decimal);
-        printf("Temperature: %d.%d°C, Humidity: %d.%d%%", temperature_integer, temperature_decimal, humidity_integer, humidity_decimal);
-        display_setDecimals(1);
-        display_int(temperature_integer*10 + temperature_decimal);
-        printf(" Light: %d ", light_measure_raw());
-        printf(" Soil: %d", soil_measure_raw(ADC_PK0));
-        printf(" Distance: %d mm", proximity_measure());
-        // adxl345_read_xyz(&_x, &_y, &_z);
-        // printf(" Accel: X=%d Y=%d Z=%d", _x, _y, _z);
-        printf(" Motion: %s", (pir_get_state() == PIR_NO_MOTION) ? "No" : "Yes");
-       puts("");
+        // Read all sensors, update display, and print payload to UART every 2 seconds
+        uint8_t temp_int, temp_dec, hum_int, hum_dec;
+        uint16_t light_value, soil_value;
+        char payload[150];
+
+        // Read sensors and update display with temperature
+        read_sensors(&temp_int, &temp_dec,
+                     &hum_int, &hum_dec,
+                     &light_value, &soil_value);
+
+        // Build payload string and print to UART/Wi-Fi/MQTT
+        build_payload(payload, sizeof(payload),
+                      setup_id,
+                      temp_int, temp_dec,
+                      hum_int, hum_dec,
+                      light_value, soil_value);
+
+        send_payload(payload);
+
         _delay_ms(2000);
     }
 }
