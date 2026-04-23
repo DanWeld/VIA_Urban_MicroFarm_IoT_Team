@@ -30,8 +30,7 @@ See detailed hardware documentation in the `doc/` folder.
 
 ### Local Development
 - **PlatformIO CLI** installed (`pip install platformio`)
-- **Python 3.9+** (for PlatformIO)
-- **C compiler** (GCC for native testing)
+- **PlatformIO, C compiler**
 - **Git** for version control
 - **Serial monitor tool** (for USB debugging)
 
