@@ -2,10 +2,6 @@
 
 Embedded C firmware for the Urban Micro Farming IoT devices. Communicates with Mosquitto MQTT broker to integrate with the Spring Boot backend.
 
-> By VIA University College, Software Technology Engineering  
-> March 2026
-
-
 ## Tech Stack
 
 - **C Language** (embedded firmware)
@@ -192,12 +188,6 @@ MQTT_QoS=1
 ```
 
 These are used by the WiFi/MQTT driver (`lib/drivers/wifi.c`).
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for team workflow and [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) for git guidelines.
 
 ---
 
