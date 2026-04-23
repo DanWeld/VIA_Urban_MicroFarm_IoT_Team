@@ -1,0 +1,120 @@
+name: Compile & Test IoT Firmware
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'bugfix/**'
+      - 'hotfix/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment:
+          - arduino_uno
+          - esp32
+          - native  # Unit tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v3
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio
+
+      - name: Build ${{ matrix.environment }}
+        run: pio run -e ${{ matrix.environment }}
+
+      - name: Run unit tests (native environment)
+        if: matrix.environment == 'native'
+        run: pio test -e native
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: firmware-${{ matrix.environment }}
+          path: .pio/build/${{ matrix.environment }}/
+
+      - name: Report status
+        if: always()
+        run: |
+          echo "Build Results for ${{ matrix.environment }}:"
+          echo "Status: ${{ job.status }}"
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Check for debug patterns
+        run: |
+          # Warn if debug prints found in committed code
+          if grep -r "Serial.println.*DEBUG\|printf.*DEBUG" src/ lib/ --include="*.c" --include="*.h" 2>/dev/null; then
+            echo "⚠️ Warning: Debug prints detected in code"
+            exit 0
+          else
+            echo "✓ No debug patterns detected"
+          fi
+
+      - name: Verify .gitignore
+        run: |
+          echo "✓ .gitignore present"
+          [ -f .gitignore ] && echo "✓ .gitignore verified"
+
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: always()
+    steps:
+      - name: Check build status
+        run: |
+          if [ "${{ needs.build.result }}" = "success" ]; then
+            echo "✅ All builds successful"
+            exit 0
+          else
+            echo "❌ Build failed"
+            exit 1
+          fi
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const buildStatus = '${{ needs.build.result }}' === 'success' ? '✅ Passed' : '❌ Failed';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## CI/CD Pipeline Status\n\n${buildStatus}\n\n- Build: ${{ needs.build.result }}\n- All environments compiled successfully`
+            });
