@@ -1,0 +1,83 @@
+name: Compile & Test IoT Firmware
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment:
+          - mega2560
+          - native
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v3
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio
+
+      - name: Build ${{ matrix.environment }}
+        run: pio run -e ${{ matrix.environment }}
+
+      - name: Run unit tests (native environment)
+        if: matrix.environment == 'native'
+        run: pio test -e native
+
+      - name: Upload build artifacts
+        if: success() && matrix.environment == 'mega2560'
+        uses: actions/upload-artifact@v3
+        with:
+          name: firmware-mega2560
+          path: .pio/build/mega2560/
+
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: always()
+    steps:
+      - name: Check build status
+        run: |
+          if [ "${{ needs.build.result }}" = "success" ]; then
+            echo "All builds successful"
+            exit 0
+          else
+            echo "Build failed"
+            exit 1
+          fi
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const buildStatus = '${{ needs.build.result }}' === 'success' ? 'Passed' : 'Failed';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## CI Pipeline Status\n\nBuild: ${buildStatus}\n\n- mega2560 firmware compiled\n- Native unit tests run`
+            });
