@@ -15,6 +15,9 @@
 #include <avr/interrupt.h>
 #endif
 #include <stdio.h>
+
+#include <string.h>
+#include <stdbool.h>
 #include "interactive.h"
 #include "button.h"
 #include "uart_stdio.h"
@@ -36,7 +39,120 @@
 
 uint8_t humidity_integer, humidity_decimal, temperature_integer, temperature_decimal;
 static int8_t _led_no = 0;
+static bool _mqtt_connected = false;
+static bool _mqtt_message_received = false;
+static char _mqtt_rx_buffer[128] = {0};
 //static int16_t _x, _y, _z;
+
+
+#define MQTT_BROKER_IP "192.168.1.61"
+#define MQTT_BROKER_PORT 1883
+#define MQTT_CLIENT_ID "arduino_mega_001"
+#define MQTT_TOPIC_TELEMETRY "farm/sensor/telemetry"
+
+static void mqtt_tcp_callback(void)
+{
+    _mqtt_message_received = true;
+}
+
+static uint8_t mqtt_encode_remaining_length(uint16_t value, uint8_t *out)
+{
+    uint8_t idx = 0;
+
+    do {
+        uint8_t encoded = (uint8_t)(value % 128U);
+        value /= 128U;
+        if (value > 0U)
+            encoded |= 0x80U;
+        out[idx++] = encoded;
+    } while (value > 0U && idx < 4U);
+
+    return idx;
+}
+
+static bool mqtt_send_connect_packet(const char *client_id)
+{
+    uint8_t packet[128];
+    uint8_t idx = 0;
+    uint8_t rem_len_bytes[4];
+    uint16_t client_id_len = (uint16_t)strlen(client_id);
+    uint16_t remaining_length = (uint16_t)(10U + 2U + client_id_len);
+    uint8_t rem_len_size = mqtt_encode_remaining_length(remaining_length, rem_len_bytes);
+
+    packet[idx++] = 0x10; // CONNECT
+    for (uint8_t i = 0; i < rem_len_size; i++)
+        packet[idx++] = rem_len_bytes[i];
+
+    // Variable header
+    packet[idx++] = 0x00;
+    packet[idx++] = 0x04;
+    packet[idx++] = 'M';
+    packet[idx++] = 'Q';
+    packet[idx++] = 'T';
+    packet[idx++] = 'T';
+    packet[idx++] = 0x04; // MQTT 3.1.1
+    packet[idx++] = 0x02; // Clean session
+    packet[idx++] = 0x00;
+    packet[idx++] = 60;   // Keep alive 60s
+
+    // Payload (client id)
+    packet[idx++] = (uint8_t)((client_id_len >> 8) & 0xFF);
+    packet[idx++] = (uint8_t)(client_id_len & 0xFF);
+    memcpy(&packet[idx], client_id, client_id_len);
+    idx += (uint8_t)client_id_len;
+
+    return (wifi_command_TCP_transmit(packet, idx) == WIFI_OK);
+}
+
+static bool mqtt_send_publish_packet(const char *topic, const char *payload)
+{
+    uint8_t packet[256];
+    uint8_t idx = 0;
+    uint8_t rem_len_bytes[4];
+    uint16_t topic_len = (uint16_t)strlen(topic);
+    uint16_t payload_len = (uint16_t)strlen(payload);
+    uint16_t remaining_length = (uint16_t)(2U + topic_len + payload_len);
+    uint8_t rem_len_size = mqtt_encode_remaining_length(remaining_length, rem_len_bytes);
+
+    if ((uint16_t)(1U + rem_len_size + remaining_length) > sizeof(packet))
+        return false;
+
+    packet[idx++] = 0x30; // PUBLISH, QoS 0
+    for (uint8_t i = 0; i < rem_len_size; i++)
+        packet[idx++] = rem_len_bytes[i];
+
+    packet[idx++] = (uint8_t)((topic_len >> 8) & 0xFF);
+    packet[idx++] = (uint8_t)(topic_len & 0xFF);
+    memcpy(&packet[idx], topic, topic_len);
+    idx += (uint8_t)topic_len;
+
+    memcpy(&packet[idx], payload, payload_len);
+    idx += (uint8_t)payload_len;
+
+    return (wifi_command_TCP_transmit(packet, idx) == WIFI_OK);
+}
+
+static bool mqtt_connect_broker(void)
+{
+    WIFI_ERROR_MESSAGE_t tcp_result = wifi_command_create_TCP_connection(
+        MQTT_BROKER_IP,
+        MQTT_BROKER_PORT,
+        mqtt_tcp_callback,
+        _mqtt_rx_buffer);
+
+    if (tcp_result != WIFI_OK) {
+        printf("Failed to open TCP to broker %s:%u. Error code: %d\n", MQTT_BROKER_IP, MQTT_BROKER_PORT, tcp_result);
+        return false;
+    }
+
+    if (!mqtt_send_connect_packet(MQTT_CLIENT_ID)) {
+        printf("Failed to send MQTT CONNECT packet.\n");
+        return false;
+    }
+
+    printf("MQTT CONNECT sent to broker %s:%u (client_id=%s).\n", MQTT_BROKER_IP, MQTT_BROKER_PORT, MQTT_CLIENT_ID);
+    return true;
+}
 
 // Reads all sensor values and updates the 7-segment display
 void read_sensors(uint8_t *temp_int, uint8_t *temp_dec,
@@ -58,18 +174,28 @@ void build_payload(char *payload, size_t size,
                    uint8_t hum_int, uint8_t hum_dec,
                    uint16_t light_value, uint16_t soil_value)
 {
-    uint16_t temperature_x10 = temp_int * 10 + temp_dec;
-    uint16_t humidity_x10 = hum_int * 10 + hum_dec;
-
     snprintf(payload, size,
-             "{\"setup_id\":%u,\"sensor_id\":null,\"temperature\":%u,\"humidity\":%u,\"light\":%u,\"soil_moisture\":%u}",
-             setup_id, temperature_x10, humidity_x10, light_value, soil_value);
+             "{\"setup_id\":%u,\"sensor_id\":null,\"temperature\":%u.%u,\"humidity\":%u.%u,\"light\":%u.%u,\"soil_moisture\":%u.%u}",
+             setup_id,
+             temp_int, (uint8_t)(temp_dec % 10),
+             hum_int, (uint8_t)(hum_dec % 10),
+             (uint16_t)(light_value / 10), (uint8_t)(light_value % 10),
+             (uint16_t)(soil_value / 10), (uint8_t)(soil_value % 10));
 }
 
 // Sends the payload through UART for now and can later be replaced by Wi-Fi/MQTT sending
 void send_payload(const char *payload)
 {
-    printf("%s\n", payload); // For now, just print to UART. Replace with Wi-Fi/MQTT sending later.
+    if (_mqtt_connected) {
+        if (mqtt_send_publish_packet(MQTT_TOPIC_TELEMETRY, payload)) {
+            printf("MQTT published to %s: %s\n", MQTT_TOPIC_TELEMETRY, payload);
+        } else {
+            _mqtt_connected = false;
+            printf("MQTT publish failed, UART fallback: %s\n", payload);
+        }
+    } else {
+        printf("MQTT not connected, UART fallback: %s\n", payload);
+    }
 }
 
 void timer_callback(uint8_t id)
@@ -84,6 +210,7 @@ int main(void)
     uint8_t temp_int, temp_dec, hum_int, hum_dec;
     uint16_t light_value, soil_value;
     char payload[150];
+    uint8_t mqtt_retry_counter = 0;
 
     // Initialize UART first for debug output
     if (UART_OK != uart_stdio_init(115200))
@@ -142,18 +269,20 @@ int main(void)
     }
 
     // Connect to WiFi hotspot
-    printf("Connecting to WiFi hotspot 'iPhone'...\n");
-    WIFI_ERROR_MESSAGE_t join_result = wifi_command_join_AP("iPhone", "Mita1234");
+    printf("Connecting to WiFi hotspot '3Bredband-CB45'...\n");
+    WIFI_ERROR_MESSAGE_t join_result = wifi_command_join_AP("3Bredband-CB45", "t+hPgqG^ma");
     if (join_result == WIFI_OK) {
-        printf("Connected to WiFi hotspot 'iPhone'.\n");
+        printf("Connected to WiFi hotspot '3Bredband-CB45'.\n");
+        _mqtt_connected = mqtt_connect_broker();
     } else {
-        printf("Failed to connect to WiFi hotspot 'iPhone'. Error code: %d\n", join_result);
+        printf("Failed to connect to WiFi hotspot '3Bredband-CB45'. Error code: %d\n", join_result);
     }
 
     servo_init(PWM_NORMAL);
 
-    // Check if button 2 is pressed during startup for interactive demo
-    if(!button_get(2))
+    // Enter interactive demo only when button 2 is pressed during startup.
+    // Default behavior is telemetry mode.
+    if(button_get(2))
     {
         interactive_demo();
     }
@@ -186,6 +315,17 @@ int main(void)
     // Continuous sensor readings
     while (1)
     {
+        if (!_mqtt_connected)
+        {
+            mqtt_retry_counter++;
+            if (mqtt_retry_counter >= 5)
+            {
+                printf("MQTT reconnect attempt...\n");
+                _mqtt_connected = mqtt_connect_broker();
+                mqtt_retry_counter = 0;
+            }
+        }
+
         // Read sensors and update display with temperature
         read_sensors(&temp_int, &temp_dec,
                      &hum_int, &hum_dec,

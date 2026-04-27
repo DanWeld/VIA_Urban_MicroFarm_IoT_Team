@@ -1,0 +1,55 @@
+{
+  "configurations": [
+    {
+      "name": "windows-gcc-x86",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "C:/Users/admin/Desktop/VIA_Urban_MicroFarm_IoT_Team/src",
+        "C:/Users/admin/Desktop/VIA_Urban_MicroFarm_IoT_Team/lib/drivers",
+        "C:/Users/admin/Desktop/VIA_Urban_MicroFarm_IoT_Team/lib/Util",
+        "C:/Users/admin/.platformio/packages/framework-arduino-avr/cores/arduino",
+        "C:/Users/admin/.platformio/packages/framework-arduino-avr/variants/mega",
+        "C:/Users/admin/.platformio/packages/framework-arduino-avr/libraries/EEPROM/src",
+        "C:/Users/admin/.platformio/packages/framework-arduino-avr/libraries/HID/src",
+        "C:/Users/admin/.platformio/packages/framework-arduino-avr/libraries/SPI/src",
+        "C:/Users/admin/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src",
+        "C:/Users/admin/.platformio/packages/framework-arduino-avr/libraries/Wire/src",
+        ""
+      ],
+      "browse": {
+        "limitSymbolsToIncludedHeaders": true,
+        "path": [
+          "C:/Users/admin/Desktop/VIA_Urban_MicroFarm_IoT_Team/src",
+          "C:/Users/admin/Desktop/VIA_Urban_MicroFarm_IoT_Team/lib/drivers",
+          "C:/Users/admin/Desktop/VIA_Urban_MicroFarm_IoT_Team/lib/Util",
+          "C:/Users/admin/.platformio/packages/framework-arduino-avr/cores/arduino",
+          "C:/Users/admin/.platformio/packages/framework-arduino-avr/variants/mega",
+          "C:/Users/admin/.platformio/packages/framework-arduino-avr/libraries/EEPROM/src",
+          "C:/Users/admin/.platformio/packages/framework-arduino-avr/libraries/HID/src",
+          "C:/Users/admin/.platformio/packages/framework-arduino-avr/libraries/SPI/src",
+          "C:/Users/admin/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src",
+          "C:/Users/admin/.platformio/packages/framework-arduino-avr/libraries/Wire/src",
+          ""
+        ]
+      },
+      "defines": [
+        "PLATFORMIO=60119",
+        "ARDUINO_AVR_MEGA2560",
+        "F_CPU=16000000L",
+        "ARDUINO_ARCH_AVR",
+        "ARDUINO=10808",
+        "__AVR_ATmega2560__",
+        ""
+      ],
+      "cStandard": "gnu11",
+      "cppStandard": "gnu++11",
+      "compilerPath": "C:/Users/admin/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe",
+      "compilerArgs": [
+        "-mmcu=atmega2560",
+        ""
+      ],
+      "intelliSenseMode": "windows-gcc-x86"
+    }
+  ],
+  "version": 4
+}

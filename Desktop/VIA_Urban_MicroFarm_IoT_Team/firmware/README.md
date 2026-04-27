@@ -2,8 +2,6 @@
 
 Embedded C firmware for the Urban Micro Farming IoT devices. Communicates with Mosquitto MQTT broker to integrate with the Spring Boot backend.
 
-
-
 ## Tech Stack
 
 - **C Language** (embedded firmware)
@@ -18,13 +16,10 @@ Embedded C firmware for the Urban Micro Farming IoT devices. Communicates with M
 
 - Arduino Mega2560 board
 - Arduino Uno Multifunctional Expansion Shield
-- VIA University expansion board
 - ESP8266 WiFi module (WiFi + MQTT connectivity)
-- HC-SR501 PIR sensor (motion detection)
-- HC-SR04 Proximity sensor (ultrasonic distance)
 - KY-018 LDR module (light sensor)
 - DHT11 temperature & humidity sensor
-- Capacitive soil moisture sensor
+- Soil moisture sensor
 - SG90 Servo (motor control)
 
 See detailed hardware documentation in the `doc/` folder.
@@ -35,8 +30,7 @@ See detailed hardware documentation in the `doc/` folder.
 
 ### Local Development
 - **PlatformIO CLI** installed (`pip install platformio`)
-- **Python 3.9+** (for PlatformIO)
-- **C compiler** (GCC for native testing)
+- **PlatformIO, C compiler**
 - **Git** for version control
 - **Serial monitor tool** (for USB debugging)
 
@@ -191,8 +185,6 @@ MQTT_QoS=1
 
 These are used by the WiFi/MQTT driver (`lib/drivers/wifi.c`).
 
-
-
 ---
 
 ## Documentation
@@ -229,31 +221,4 @@ Ready to code? Create a feature branch and start developing!
 
 ```bash
 git checkout -b feature/mqtt-temperature-sensor
-```
-
----
-
-## Commands Only (Windows)
-
-```powershell
-# 1) Build
-C:\Users\admin\.platformio\penv\Scripts\platformio.exe run -e megaatmega2560
-
-# 2) Upload
-C:\Users\admin\.platformio\penv\Scripts\platformio.exe run -e megaatmega2560 --target upload
-
-# 3) Serial monitor (COM7)
-C:\Users\admin\.platformio\penv\Scripts\platformio.exe device monitor -p COM7 -b 115200
-
-# 4) Start broker
-docker compose up -d mosquitto
-
-# 5) Clear retained telemetry message
-docker exec urbanmicrofarm-mosquitto mosquitto_pub -h localhost -p 1883 -t farm/sensor/telemetry -n -r
-
-# 6) Subscribe live telemetry in Docker
-docker exec -it urbanmicrofarm-mosquitto mosquitto_sub -h localhost -p 1883 -t farm/sensor/telemetry -v
-
-# 7) One-shot validation (receive 3 messages then exit)
-docker exec urbanmicrofarm-mosquitto mosquitto_sub -h localhost -p 1883 -t farm/sensor/telemetry -C 3 -W 20 -v
 ```
