@@ -34,6 +34,7 @@
 #include "soil.h"
 #include "tone.h"
 #include "timer.h"
+#include "wpump.h"
 
 //#include "adxl345.h"
 

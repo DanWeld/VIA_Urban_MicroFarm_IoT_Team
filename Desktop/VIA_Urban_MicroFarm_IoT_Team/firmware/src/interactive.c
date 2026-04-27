@@ -30,6 +30,7 @@
 #include "light.h"
 #include "soil.h"
 #include "tone.h"
+#include "wpump.h"
 //#include "adxl345.h"
 
 #define MAX_STRING_LENGTH 100
