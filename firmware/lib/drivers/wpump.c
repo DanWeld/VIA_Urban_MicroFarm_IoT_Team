@@ -1,6 +1,4 @@
 #include "wpump.h"
-#include "button.h"
-#include "timer.h"
 
 #include <stdint.h>
 #include <avr/io.h>
@@ -12,7 +10,6 @@
 void wpump_configure(void){
     wpump_ddrc |=(1<<PC7);// set it up as output;
     wpump_port &= ~(1<<PC7); // power off active high.
-    button_init();
     
 }
 
