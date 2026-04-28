@@ -14,6 +14,7 @@
 #include "adc.h"
 #include "light.h"
 #include "soil.h"
+#include "wpump.h"
 
 // Reads all sensor values and updates the 7-segment display. read_sensors() = get data
 void read_sensors(uint8_t *temp_int, uint8_t *temp_dec,
