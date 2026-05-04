@@ -18,6 +18,45 @@ static void (*_callback)(uint8_t byte);
 
 static void wifi_TCP_callback(uint8_t byte);
 
+// Stub for missing callback
+void wifi_command_callback(uint8_t byte) {
+    // TODO: Implement actual callback logic if needed
+    (void)byte;
+}
+
+// Stub for missing buffer clear function
+void wifi_clear_databuffer_and_index(void) {
+    wifi_dataBufferIndex = 0;
+    memset(wifi_dataBuffer, 0, sizeof(wifi_dataBuffer));
+}
+
+// Stubs for missing WiFi API functions
+WIFI_ERROR_MESSAGE_t wifi_command_create_TCP_connection(char *IP, uint16_t port, WIFI_TCP_Callback_t callback_when_message_received, char *received_message_buffer) {
+    (void)IP; (void)port; (void)callback_when_message_received; (void)received_message_buffer;
+    return WIFI_OK;
+}
+
+void wifi_init(void) {
+    // TODO: Implement WiFi initialization
+}
+
+WIFI_ERROR_MESSAGE_t wifi_command_disable_echo(void) {
+    return WIFI_OK;
+}
+
+WIFI_ERROR_MESSAGE_t wifi_command_set_mode_to_1(void) {
+    return WIFI_OK;
+}
+
+WIFI_ERROR_MESSAGE_t wifi_command_set_to_single_Connection(void) {
+    return WIFI_OK;
+}
+
+WIFI_ERROR_MESSAGE_t wifi_command_join_AP(char *ssid, char *password) {
+    (void)ssid; (void)password;
+    return WIFI_OK;
+}
+
 
 
 WIFI_ERROR_MESSAGE_t wifi_command_TCP_transmit(uint8_t * data, uint16_t length)
