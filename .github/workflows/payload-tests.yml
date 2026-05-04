@@ -1,0 +1,54 @@
+name: Payload Tests and Coverage
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - develop
+      - main
+      - test/**
+      - feature/**
+      - bugfix/**
+
+jobs:
+  payload-tests:
+    name: Run payload tests and coverage
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        working-directory: firmware
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO and gcovr
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio gcovr
+
+      - name: Run payload unit tests
+        run: |
+          python -m platformio test -e test_payload_coverage
+
+      - name: Generate coverage report
+        run: |
+          gcovr -r . --object-directory .pio/build/test_payload_coverage --print-summary
+          gcovr -r . --object-directory .pio/build/test_payload_coverage --html-details coverage.html
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload-coverage-report
+          path: |
+            firmware/coverage*
