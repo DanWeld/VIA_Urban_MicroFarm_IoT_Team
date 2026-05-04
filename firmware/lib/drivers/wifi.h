@@ -12,6 +12,9 @@
 #include <stdint.h>
 #include "uart.h"
 
+// Declare buffer clear function
+void wifi_clear_databuffer_and_index(void);
+
 /**
  * @brief Define which USART module is used for WiFi communication.
  * 
