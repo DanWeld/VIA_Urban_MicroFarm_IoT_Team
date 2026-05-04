@@ -45,12 +45,10 @@ jobs:
         run: |
           gcovr -r . --object-directory .pio/build/test_payload_coverage --print-summary
           gcovr -r . --object-directory .pio/build/test_payload_coverage --html-details coverage.html
-          gcovr -r . --object-directory .pio/build/test_payload_coverage --xml coverage.xml
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
           name: payload-coverage-report
           path: |
-            firmware/coverage.html
-            firmware/coverage.xml
+            firmware/coverage*
