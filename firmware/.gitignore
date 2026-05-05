@@ -1,3 +1,4 @@
+*.log
 .pio/
 .vscode/
 coverage.html

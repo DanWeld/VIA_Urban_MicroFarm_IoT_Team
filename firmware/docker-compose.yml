@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # Mosquitto MQTT Message Broker
@@ -6,9 +6,9 @@ services:
     image: eclipse-mosquitto:latest
     container_name: urbanmicrofarm-mosquitto
     ports:
-      - "1883:1883"    # MQTT protocol
-      - "8883:8883"    # MQTT over TLS
-      - "9001:9001"    # WebSocket
+      - "1883:1883" # MQTT protocol
+      - "8883:8883" # MQTT over TLS
+      - "9001:9001" # WebSocket
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
       - ./mosquitto/data:/mosquitto/data
@@ -41,21 +41,6 @@ services:
     networks:
       - urbanmicrofarm-net
     restart: unless-stopped
-
-  # Optional: MQTT Web UI for monitoring
-  mqtt-ui:
-    image: hivechat/mqtt-ui:latest
-    container_name: urbanmicrofarm-mqtt-ui
-    ports:
-      - "8080:80"
-    depends_on:
-      - mosquitto
-    environment:
-      MQTT_HOST: mosquitto
-      MQTT_PORT: 1883
-      MQTT_AWS_END_POINT: mosquitto
-    networks:
-      - urbanmicrofarm-net
 
 networks:
   urbanmicrofarm-net:
