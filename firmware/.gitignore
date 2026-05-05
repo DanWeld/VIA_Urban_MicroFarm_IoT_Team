@@ -1,1 +1,9 @@
 *.log
+.pio/
+.vscode/
+coverage.html
+coverage.xml
+coverage.css
+coverage.js
+coverage.functions.html
+coverage.*
