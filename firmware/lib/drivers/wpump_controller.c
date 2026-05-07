@@ -19,9 +19,9 @@ void wpump_controller_dispense(uint16_t ml){
     {
         return; // the number is too big 
     }
+    pump_running = true;
      wpump_start();
      timer_create_sw(wpump_callback,time_ms);
-     
 }
 bool wpump_controller_get_status(){
     return pump_running;
