@@ -1,1 +1,10 @@
-.vscode/
+*.log
+firmware/.pio/
+firmware/.vscode/
+firmware/.pio/libdeps
+coverage.html
+coverage.xml
+coverage.css
+coverage.js
+coverage.functions.html
+coverage.*
