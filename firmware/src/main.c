@@ -1,117 +1,218 @@
 /*****************************************************************************
- * main.c
- *  Main application file for the IoT hardware drivers demo.
- *  This file initializes all the hardware drivers and demonstrates their
- *  functionality.
- *  Push button 2 on the shield during reset to enter continious sensor
- *  reading mode. Otherwise the program will run an interactive demo that
- *  allows you to test each driver individually by sending commands over UART.
- *  See interactive.c for details.
- * 
- *  Author:  Erland Larsen
- *  Date:    2026-03-17
- *  Project: SPE4_API
+ *  Main application file for the IoT hardware drivers.
+ *  This file initializes all the hardware drivers and demonstrates their functionality.
  *****************************************************************************/
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
 #include <stdio.h>
-#include "interactive.h"
-#include "button.h"
+#include <string.h>
+#include <stdbool.h>
+
 #include "uart_stdio.h"
 #include "led.h"
-#include "pir.h"
 #include "display.h"
 #include "wifi.h"
-#include "button.h"
-#include "buzzer.h"
 #include "dht11.h"
-#include "proximity.h"
-#include "servo.h"
 #include "adc.h"
 #include "light.h"
 #include "soil.h"
-#include "tone.h"
-#include "timer.h"
-//#include "adxl345.h"
+#include "wpump.h"
 
-uint8_t humidity_integer, humidity_decimal, temperature_integer, temperature_decimal;
-static int8_t _led_no = 0;
-//static int16_t _x, _y, _z;
+//  MQTT CONFIG 
+#define MQTT_BROKER_IP "20.240.208.122"
+#define MQTT_BROKER_PORT 1883
+#define MQTT_CLIENT_ID "arduino_mega_001"
+#define MQTT_TOPIC_TELEMETRY "farm/sensor/telemetry"
 
-void timer_callback(uint8_t id)
+static bool _mqtt_connected = false;
+static char _mqtt_rx_buffer[128] = {0};
+
+// MQTT 
+static void mqtt_tcp_callback(void)
 {
-    led_toggle((_led_no%4) + 1); // Toggle LEDs in sequence 1-4
-    _led_no++;
+    // not used but required
 }
 
-int main(void)
+static uint8_t mqtt_encode_remaining_length(uint16_t value, uint8_t *out)
 {
-    led_init();
-    button_init();
-    display_init();
-    proximity_init();
-    light_init();
-    soil_init(ADC_PK0);
-    pir_init(pir_callback);
-//    tone_init();
-    wifi_init();
-    servo_init(PWM_NORMAL);
-//    adxl345_init();
+    uint8_t idx = 0;
+    do {
+        uint8_t encoded = value % 128;
+        value /= 128;
+        if (value > 0) encoded |= 0x80;
+        out[idx++] = encoded;
+    } while (value > 0 && idx < 4);
+    return idx;
+}
 
-    if (UART_OK != uart_stdio_init(115200))
+static bool mqtt_send_connect_packet(const char *client_id)
+{
+    uint8_t packet[128];
+    uint8_t idx = 0;
+
+    uint8_t rem_len_bytes[4];
+    uint16_t len = strlen(client_id);
+    uint16_t remaining = 10 + 2 + len;
+
+    uint8_t rem_size = mqtt_encode_remaining_length(remaining, rem_len_bytes);
+
+    packet[idx++] = 0x10;
+    for(uint8_t i=0;i<rem_size;i++) packet[idx++] = rem_len_bytes[i];
+
+    // MQTT header
+    packet[idx++] = 0x00; packet[idx++] = 0x04;
+    packet[idx++] = 'M'; packet[idx++] = 'Q';
+    packet[idx++] = 'T'; packet[idx++] = 'T';
+    packet[idx++] = 0x04;
+    packet[idx++] = 0x02;
+    packet[idx++] = 0x00; packet[idx++] = 60;
+
+    packet[idx++] = len >> 8;
+    packet[idx++] = len & 0xFF;
+
+    memcpy(&packet[idx], client_id, len);
+    idx += len;
+
+    return wifi_command_TCP_transmit(packet, idx) == WIFI_OK;
+}
+
+static bool mqtt_send_publish_packet(const char *topic, const char *payload)
+{
+    uint8_t packet[256];
+    uint8_t idx = 0;
+
+    uint16_t topic_len = strlen(topic);
+    uint16_t payload_len = strlen(payload);
+    uint16_t remaining = 2 + topic_len + payload_len;
+
+    uint8_t rem_len_bytes[4];
+    uint8_t rem_size = mqtt_encode_remaining_length(remaining, rem_len_bytes);
+
+    packet[idx++] = 0x30;
+    for(uint8_t i=0;i<rem_size;i++) packet[idx++] = rem_len_bytes[i];
+
+    packet[idx++] = topic_len >> 8;
+    packet[idx++] = topic_len & 0xFF;
+
+    memcpy(&packet[idx], topic, topic_len);
+    idx += topic_len;
+
+    memcpy(&packet[idx], payload, payload_len);
+    idx += payload_len;
+
+    return wifi_command_TCP_transmit(packet, idx) == WIFI_OK;
+}
+
+static bool mqtt_connect(void)
+{
+    if (wifi_command_create_TCP_connection(
+            MQTT_BROKER_IP,
+            MQTT_BROKER_PORT,
+            mqtt_tcp_callback,
+            _mqtt_rx_buffer) != WIFI_OK)
+        return false;
+
+    return mqtt_send_connect_packet(MQTT_CLIENT_ID);
+}
+
+//
+void read_sensors(uint8_t *temp_int, uint8_t *temp_dec,
+                  uint8_t *hum_int, uint8_t *hum_dec,
+                  uint16_t *light_value, uint16_t *soil_value)
+{
+    dht11_get(hum_int, hum_dec, temp_int, temp_dec);
+    *light_value = light_measure_raw();
+    *soil_value = soil_measure_raw(ADC_PK0);
+
+    display_setDecimals(1);
+    display_int((*temp_int) * 10 + (*temp_dec));
+}
+
+void build_payload(char *payload, size_t size,
+                   uint16_t setup_id,
+                   uint8_t temp_int, uint8_t temp_dec,
+                   uint8_t hum_int, uint8_t hum_dec,
+                   uint16_t light_value, uint16_t soil_value)
+{
+    uint16_t temperature_x10 = temp_int * 10 + temp_dec;
+    uint16_t humidity_x10 = hum_int * 10 + hum_dec;
+
+    snprintf(payload, size,
+             "{\"setup_id\":%u,\"sensor_id\":null,\"temperature\":%u,\"humidity\":%u,\"light\":%u,\"soil_moisture\":%u}",
+             setup_id, temperature_x10, humidity_x10, light_value, soil_value);
+}
+
+//  MQTT + fallback
+void send_payload(const char *payload)
+{
+    if (_mqtt_connected)
     {
-        led_on(4); // Turn on LED4 to indicate error
-        while (1)
-            ;
-    }
-    sei(); // Enable global interrupts
-    printf("VIA UNIVERSITY COLLEGE SEP4 IoT Hardware DRIVERS DEMO\n");
-    if(!button_get(2))
-    {
-        interactive_demo();
-    }
-
-    timer_create_sw(timer_callback, 1000); // Create a timer that toggles an LED every 1 second
-
-    tone_play_starwars();
-
-    // Test servo by sweeping from -90 to +90 degrees and back
-    servo_start();
-    for(int i=-90; i<=90; i+=10)
-    {
-        servo_setAngle(PWM_A, (int8_t)i);
-        printf("Servo set to %d degrees.\n", i);
-        _delay_ms(100);
-    }
-    servo_stop();
-
-    // Test WiFi by sending AT command and printing response
-    if(WIFI_OK == wifi_command_AT())
-    {
-        printf("WiFi module responded to AT command.\n");
+        if (!mqtt_send_publish_packet(MQTT_TOPIC_TELEMETRY, payload))
+        {
+            _mqtt_connected = false;
+            printf("MQTT failed, fallback UART: %s\n", payload);
+        }
     }
     else
     {
-        printf("WiFi module did not respond to AT command.\n");
+        printf("%s\n", payload);
+    }
+}
+
+
+int main(void)
+{
+    uint16_t setup_id = 1;
+    uint8_t temp_int, temp_dec, hum_int, hum_dec;
+    uint16_t light_value, soil_value;
+    char payload[150];
+    uint8_t retry = 0;
+
+    display_init();
+    light_init();
+    soil_init(ADC_PK0);
+    wifi_init();
+
+    if (UART_OK != uart_stdio_init(115200))
+    {
+        led_on(4);
+        while (1);
     }
 
-    buzzer_beep();
+    sei();
 
-    // Continuous sensor readings
+    // WiFi connect
+    _delay_ms(4000);
+    wifi_command_disable_echo();
+    wifi_command_set_mode_to_1();
+    wifi_command_set_to_single_Connection();
+
+    if (wifi_command_join_AP("iPhone", "Mita1234") == WIFI_OK)
+    {
+        _mqtt_connected = mqtt_connect();
+    }
+
     while (1)
     {
-        dht11_get(&humidity_integer, &humidity_decimal, &temperature_integer, &temperature_decimal);
-        printf("Temperature: %d.%d°C, Humidity: %d.%d%%", temperature_integer, temperature_decimal, humidity_integer, humidity_decimal);
-        display_setDecimals(1);
-        display_int(temperature_integer*10 + temperature_decimal);
-        printf(" Light: %d ", light_measure_raw());
-        printf(" Soil: %d", soil_measure_raw(ADC_PK0));
-        printf(" Distance: %d mm", proximity_measure());
-        // adxl345_read_xyz(&_x, &_y, &_z);
-        // printf(" Accel: X=%d Y=%d Z=%d", _x, _y, _z);
-        printf(" Motion: %s", (pir_get_state() == PIR_NO_MOTION) ? "No" : "Yes");
-       puts("");
+        if (!_mqtt_connected && ++retry >= 5)
+        {
+            _mqtt_connected = mqtt_connect();
+            retry = 0;
+        }
+
+        read_sensors(&temp_int, &temp_dec,
+                     &hum_int, &hum_dec,
+                     &light_value, &soil_value);
+
+        build_payload(payload, sizeof(payload),
+                      setup_id,
+                      temp_int, temp_dec,
+                      hum_int, hum_dec,
+                      light_value, soil_value);
+
+        send_payload(payload);
+
         _delay_ms(2000);
     }
 }

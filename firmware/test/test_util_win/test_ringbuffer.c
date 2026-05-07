@@ -4,7 +4,7 @@
 #define TEST_CAPACITY 4
 #define TEST_ELEM_SIZE sizeof(int)
 
-static ringbuffer_t *rb;
+static ringbuffer_t rb;
 
 void setUp(void) {
     rb = ringbuffer_create(TEST_CAPACITY, TEST_ELEM_SIZE);
