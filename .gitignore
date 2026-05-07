@@ -1,6 +1,7 @@
 *.log
-.pio/
-.vscode/
+firmware/.pio/
+firmware/.vscode/
+firmware/.pio/libdeps
 coverage.html
 coverage.xml
 coverage.css
