@@ -164,7 +164,7 @@ void send_payload(const char *payload)
 
 int main(void)
 {
-    
+    wpump_configure();
     uint16_t setup_id = 1;
     uint8_t temp_int, temp_dec, hum_int, hum_dec;
     uint16_t light_value, soil_value;
@@ -183,7 +183,7 @@ int main(void)
     }
 
     sei();
-
+    wpump_controller_dispense(100);
     // WiFi connect
     _delay_ms(4000);
     wifi_command_disable_echo();
