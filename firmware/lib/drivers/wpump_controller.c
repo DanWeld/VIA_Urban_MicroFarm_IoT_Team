@@ -4,7 +4,7 @@
 #include "wpump_converter.h"
 #include <stdbool.h>
 
-#define LIMIT 1000U
+#define LIMIT 500U
 
  static bool pump_running = false;
 static void wpump_callback(uint8_t id) {
