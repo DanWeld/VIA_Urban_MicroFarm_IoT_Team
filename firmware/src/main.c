@@ -183,7 +183,7 @@ int main(void)
     }
 
     sei();
-    wpump_controller_dispense(100);
+    wpump_controller_dispense(150);
     // WiFi connect
     _delay_ms(4000);
     wifi_command_disable_echo();
