@@ -19,7 +19,7 @@ void wpump_controller_dispense(uint16_t ml){
     {
         return; // the number is too big 
     }
-     wpump_start;
+     wpump_start();
      timer_create_sw(wpump_callback,time_ms);
      
 }
