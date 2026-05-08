@@ -19,20 +19,47 @@
 #include "soil.h"
 #include "wpump.h"
 #include "wpump_controller.h"
+#include "json_parser.h"
 
 //  MQTT CONFIG 
 #define MQTT_BROKER_IP "20.240.208.122"
 #define MQTT_BROKER_PORT 1883
 #define MQTT_CLIENT_ID "arduino_mega_001"
 #define MQTT_TOPIC_TELEMETRY "farm/sensor/telemetry"
+#define MQTT_TOPIC_COMMAND "farm/+/cmd"
 
 static bool _mqtt_connected = false;
 static char _mqtt_rx_buffer[128] = {0};
 
 // MQTT 
-static void mqtt_tcp_callback(void)
+static void mqtt_tcp_callback(uint8_t byte)
 {
-    // not used but required
+    static char mqtt_buffer[128];
+    static uint8_t index = 0;
+
+    if (index < sizeof(mqtt_buffer) - 1)
+    {
+        mqtt_buffer[index++] = byte;
+        mqtt_buffer[index] = '\0';
+    }
+
+    if (byte == '}')
+    {
+        char *json_start = strchr(mqtt_buffer, '{');
+
+        if (json_start != NULL)
+        {
+            Response res = process_json(json_start);
+
+            if (strcmp(res.actuator, "water_pump") == 0)
+            {
+                wpump_controller_dispense(res.amount_ml);
+            }
+        }
+
+        index = 0;
+        memset(mqtt_buffer, 0, sizeof(mqtt_buffer));
+    }
 }
 
 static uint8_t mqtt_encode_remaining_length(uint16_t value, uint8_t *out)
@@ -74,6 +101,37 @@ static bool mqtt_send_connect_packet(const char *client_id)
 
     memcpy(&packet[idx], client_id, len);
     idx += len;
+
+    return wifi_command_TCP_transmit(packet, idx) == WIFI_OK;
+}
+static bool mqtt_send_subscribe_packet(const char *topic)
+{
+    uint8_t packet[128];
+    uint8_t idx = 0;
+
+    uint16_t topic_len = strlen(topic);
+    uint16_t remaining = 2 + 2 + topic_len + 1;
+
+    uint8_t rem_len_bytes[4];
+    uint8_t rem_size = mqtt_encode_remaining_length(remaining, rem_len_bytes);
+
+    packet[idx++] = 0x82;
+
+    for (uint8_t i = 0; i < rem_size; i++)
+    {
+        packet[idx++] = rem_len_bytes[i];
+    }
+
+    packet[idx++] = 0x00;
+    packet[idx++] = 0x01;
+
+    packet[idx++] = topic_len >> 8;
+    packet[idx++] = topic_len & 0xFF;
+
+    memcpy(&packet[idx], topic, topic_len);
+    idx += topic_len;
+
+    packet[idx++] = 0x00;   // QoS 0
 
     return wifi_command_TCP_transmit(packet, idx) == WIFI_OK;
 }
@@ -183,7 +241,7 @@ int main(void)
     }
 
     sei();
-    wpump_controller_dispense(150);
+    
     // WiFi connect
     _delay_ms(4000);
     wifi_command_disable_echo();
@@ -193,6 +251,10 @@ int main(void)
     if (wifi_command_join_AP("iPhone", "Mita1234") == WIFI_OK)
     {
         _mqtt_connected = mqtt_connect();
+        if (_mqtt_connected)
+    {
+        mqtt_send_subscribe_packet(MQTT_TOPIC_COMMAND);
+    }
     }
 
     while (1)
@@ -200,6 +262,10 @@ int main(void)
         if (!_mqtt_connected && ++retry >= 5)
         {
             _mqtt_connected = mqtt_connect();
+            if (_mqtt_connected)
+            {
+                mqtt_send_subscribe_packet(MQTT_TOPIC_COMMAND);
+            }
             retry = 0;
         }
 
