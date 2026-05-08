@@ -1,5 +1,5 @@
 #include <stdint.h>
-#include <ArduinoJson.h>
+#include <cJSON.h>
 
 typedef struct {
     char actuator;
@@ -9,14 +9,16 @@ typedef struct {
 
 void process_json(const char *payload){
 
-    StaticJsonDocument<200> doc;
+    cJSON *json = cJSON_Parse(payload);
 
-    DeserializationError error =
-        deserializeJson(doc, payload);
-
-    if(error)
+    if (!json)
     {
-        printf("JSON failed\n");
+        printf("JSON error\n");
         return;
     }
-}
+    char actuator_w   = cJSON_GetObjectItem(json, "actuator")->valueint;
+    int ml = cJSON_GetObjectItem(json, "amount_ml")->valueint;
+
+    cJSON_Delete(json);
+
+};
