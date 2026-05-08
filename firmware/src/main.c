@@ -32,33 +32,27 @@ static bool _mqtt_connected = false;
 static char _mqtt_rx_buffer[128] = {0};
 
 // MQTT 
-static void mqtt_tcp_callback(uint8_t byte)
+static void mqtt_tcp_callback(void)
 {
-    static char mqtt_buffer[128];
-    static uint8_t index = 0;
+    char *json_start = strchr(_mqtt_rx_buffer, '{');
 
-    if (index < sizeof(mqtt_buffer) - 1)
+    if (json_start != NULL)
     {
-        mqtt_buffer[index++] = byte;
-        mqtt_buffer[index] = '\0';
-    }
+        char *json_end = strchr(json_start, '}');
 
-    if (byte == '}')
-    {
-        char *json_start = strchr(mqtt_buffer, '{');
-
-        if (json_start != NULL)
+        if (json_end != NULL)
         {
+            *(json_end + 1) = '\0';
+
             Response res = process_json(json_start);
 
             if (strcmp(res.actuator, "water_pump") == 0)
             {
                 wpump_controller_dispense(res.amount_ml);
             }
-        }
 
-        index = 0;
-        memset(mqtt_buffer, 0, sizeof(mqtt_buffer));
+            memset(_mqtt_rx_buffer, 0, sizeof(_mqtt_rx_buffer));
+        }
     }
 }
 
@@ -242,6 +236,7 @@ int main(void)
 
     sei();
     
+    
     // WiFi connect
     _delay_ms(4000);
     wifi_command_disable_echo();
@@ -249,13 +244,14 @@ int main(void)
     wifi_command_set_to_single_Connection();
 
     if (wifi_command_join_AP("iPhone", "Mita1234") == WIFI_OK)
-    {
-        _mqtt_connected = mqtt_connect();
-        if (_mqtt_connected)
+{
+    _mqtt_connected = mqtt_connect();
+
+    if (_mqtt_connected)
     {
         mqtt_send_subscribe_packet(MQTT_TOPIC_COMMAND);
     }
-    }
+}
 
     while (1)
     {
