@@ -82,6 +82,24 @@ WIFI_ERROR_MESSAGE_t wifi_command_set_mode_to_1();
 WIFI_ERROR_MESSAGE_t wifi_command_set_to_single_Connection();
 
 /**
+ * @brief Query the current station IP address from the WiFi module.
+ *
+ * @param ip_address Buffer to receive the IP response text.
+ * @param ip_address_size Size of the buffer.
+ * @return WIFI_ERROR_MESSAGE_t Error message based on the response from the module.
+ */
+WIFI_ERROR_MESSAGE_t wifi_command_get_station_ip(char *ip_address, uint16_t ip_address_size);
+
+/**
+ * @brief Query the ESP8266 connection status.
+ *
+ * @param status_buffer Buffer to receive the raw status text.
+ * @param status_buffer_size Size of the buffer.
+ * @return WIFI_ERROR_MESSAGE_t Error message based on the response from the module.
+ */
+WIFI_ERROR_MESSAGE_t wifi_command_get_connection_status(char *status_buffer, uint16_t status_buffer_size);
+
+/**
  * @brief Getting the ip based on the url. The user should provide a string with the URL and a buffer for the response
  * 
  * @param url // The url
