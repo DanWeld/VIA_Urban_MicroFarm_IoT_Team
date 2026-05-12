@@ -1,7 +1,10 @@
 #include <stdbool.h>
 #include <stdint.h>
-#include <wifi.h>
 #include <stdio.h>
+#include <util/delay.h>
+#include <avr/interrupt.h>
+#include "wifi.h"
+#include "dht11.h"
 #include "connections_commands.h"
 
 bool wait_for_station_ip(void) {
