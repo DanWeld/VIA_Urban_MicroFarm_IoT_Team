@@ -19,6 +19,7 @@
 #include "light.h"
 #include "soil.h"
 #include "wpump.h"
+#include "commands.h"
 
 // Configuration
 #define MQTT_BROKER_IP            "20.240.208.122"

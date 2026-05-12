@@ -1,0 +1,1 @@
+void handle_backend_command(const char *payload);
