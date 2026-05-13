@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
+#include <util/delay.h>
 
 #include "wifi.h"
 #include "commands.h"

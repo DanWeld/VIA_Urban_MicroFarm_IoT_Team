@@ -34,14 +34,14 @@
 #define SENSOR_DISPLAY_INTERVAL   5
 
 // Runtime state
-static uint16_t setup_id = SETUP_ID;            // Fixed device setup ID for MQTT topics
-static bool mqtt_connected = false;
-static char mqtt_rx_buffer[256] = {0};
-static uint16_t telemetry_counter = 0;         // Counts 100ms intervals (600 = 60 sec)
-static uint16_t heartbeat_counter = 0;         // Counts 100ms intervals (300 = 30 sec)
-static uint16_t sensor_display_counter = 0;    // Counts 100ms intervals (50 = 5 sec)
-static uint32_t millis_counter = 0;
-static bool mqtt_command_received = false;
+ uint16_t setup_id = SETUP_ID;            // Fixed device setup ID for MQTT topics
+ bool mqtt_connected = false;
+ char mqtt_rx_buffer[256] = {0};
+ uint16_t telemetry_counter = 0;         // Counts 100ms intervals (600 = 60 sec)
+ uint16_t heartbeat_counter = 0;         // Counts 100ms intervals (300 = 30 sec)
+ uint16_t sensor_display_counter = 0;    // Counts 100ms intervals (50 = 5 sec)
+ uint32_t millis_counter = 0;
+ bool mqtt_command_received = false;
 
 static void handle_backend_command(const char *payload) {
     if (strstr(payload, "\"actuator\":\"water_pump\"") != NULL) {

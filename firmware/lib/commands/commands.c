@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
+#include <stdbool.h>
 
 #include "commands.h"
 #include "dht11.h"
@@ -11,9 +12,14 @@
 #include "soil.h"
 #include "display.h"
 #include "mqtt_commands.h"
-#include "wpump_controller.h"
+// please uncomment #include "wpump_controller.h" when add water pump converter branch is merged
+// it include  wpump_controller
+//#include "wpump_controller.h"
+
+#define SENSOR_ID                 1
 
 extern bool mqtt_connected;
+extern uint16_t setup_id;
 
 void commands_handle_backend_command(const char *payload) {
     if (strstr(payload, "\"actuator\":\"water_pump\"") != NULL) {
@@ -26,7 +32,8 @@ void commands_handle_backend_command(const char *payload) {
         }
 
         printf("MQTT command received: water_pump %u ml\n", amount_ml);
-        wpump_controller_dispense(amount_ml);
+        // same thing here un comment when water pump converter branch is merged
+        //wpump_controller_dispense(amount_ml);
         printf("Water pump command completed\n");
     }
 }
