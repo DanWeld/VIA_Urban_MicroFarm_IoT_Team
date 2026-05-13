@@ -243,7 +243,7 @@ int main(void)
     wifi_command_set_mode_to_1();
     wifi_command_set_to_single_Connection();
 
-    if (wifi_command_join_AP("iPhone", "Mita1234") == WIFI_OK)
+    if (wifi_command_join_AP("3Bredband_CB45", "t+hPgqG^ma") == WIFI_OK)
 {
     _mqtt_connected = mqtt_connect();
 

@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # Mosquitto MQTT Message Broker
   mosquitto:
@@ -10,7 +8,7 @@ services:
       - "8883:8883" # MQTT over TLS
       - "9001:9001" # WebSocket
     volumes:
-      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
     environment:
@@ -24,28 +22,6 @@ services:
       retries: 3
       start_period: 10s
 
-  # Optional: MQTT Simulator for testing (publishes dummy sensor data)
-  mqtt-simulator:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.simulator
-    container_name: urbanmicrofarm-simulator
-    depends_on:
-      mosquitto:
-        condition: service_healthy
-    environment:
-      MQTT_BROKER: mosquitto
-      MQTT_PORT: 1883
-      MQTT_CLIENT_ID: simulator_device_001
-      SENSOR_INTERVAL: 5
-    networks:
-      - urbanmicrofarm-net
-    restart: unless-stopped
-
 networks:
   urbanmicrofarm-net:
     driver: bridge
-
-volumes:
-  mosquitto_data:
-  mosquitto_log:

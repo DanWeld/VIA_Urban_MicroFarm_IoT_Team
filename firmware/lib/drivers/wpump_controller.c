@@ -6,7 +6,8 @@
 
 #define LIMIT 500U
 
- static bool pump_running = false;
+static bool pump_running = false;
+
 static void wpump_callback(uint8_t id) {
     wpump_stop(); // force stop water pump 
         pump_running = false;
@@ -14,12 +15,15 @@ static void wpump_callback(uint8_t id) {
     }
 
 void wpump_controller_dispense(uint32_t ml){
-    
-    
+
+    if (ml > LIMIT)
+    {
+        return; // the number is too big
+    }
+
     uint32_t time_ms = wpump_converter_convert_mL_to_ms(ml);
-    
-    
-    if (ml>LIMIT || time_ms == 0 )
+
+    if (time_ms == 0 )
     {
         return; // the number is too big 
     }
