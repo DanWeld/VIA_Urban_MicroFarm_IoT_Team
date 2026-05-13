@@ -20,11 +20,13 @@
 #include "soil.h"
 #include "wpump.h"
 #include "commands.h"
+#include "connections_commands.h"
+#include "mqtt_commands.h"
 
 // Configuration
-#define MQTT_BROKER_IP            "20.240.208.122"
-#define MQTT_BROKER_PORT          1883
-#define MQTT_CLIENT_ID            "arduino_mega_001"
+//#define MQTT_BROKER_IP            "20.240.208.122"
+//#define MQTT_BROKER_PORT          1883
+//#define MQTT_CLIENT_ID            "arduino_mega_001"
 #define SETUP_ID                  1
 #define SENSOR_ID                 1
 #define TELEMETRY_INTERVAL_SEC    15
@@ -382,16 +384,16 @@ int main(void) {
     printf("WiFi connected: yes\n");
     _delay_ms(2000);
 
-    if (!wait_for_station_ip()) {
+    if (!connections_commands_wait_for_station_ip()) {
         led_on(4);
         while (1);
     }
 
-    log_connection_status();
+    connections_commands_log_connection_status();
     
     // Connect to MQTT broker
     _delay_ms(2000);
-    if (!mqtt_connect()) {
+    if (!mqtt_command_mqtt_connect()) {
         printf("MQTT connection failed\n");
         led_on(4);
         while (1);
@@ -404,7 +406,7 @@ int main(void) {
     
     // Main loop
     while (1) {
-        poll_mqtt_incoming();
+        mqtt_command_poll_mqtt_incoming();
         if (mqtt_command_received) {
             mqtt_command_received = false;
         }
@@ -416,26 +418,26 @@ int main(void) {
         
         // Display sensor values every 5 seconds (50 x 100ms)
         if (sensor_display_counter >= 50) {
-            display_sensor_values();
+            commands_display_sensor_values();
             sensor_display_counter = 0;
         }
         
         // Send telemetry every 15 seconds (150 x 100ms)
         if (telemetry_counter >= 150) {
-            send_telemetry();
+            commands_send_telemetry();
             telemetry_counter = 0;
         }
         
         // Send heartbeat every 30 seconds (300 x 100ms)
         if (heartbeat_counter >= 300) {
-            send_heartbeat();
+            commands_send_heartbeat();
             heartbeat_counter = 0;
         }
         
         // Reconnect if MQTT disconnected
         if (!mqtt_connected) {
             _delay_ms(5000);
-            if (mqtt_connect()) {
+            if (mqtt_command_mqtt_connect()) {
                 mqtt_connected = true;
             }
         }

@@ -7,7 +7,7 @@
 #include "dht11.h"
 #include "connections_commands.h"
 
-bool wait_for_station_ip(void) {
+bool connections_commands_wait_for_station_ip(void) {
     char ip_buffer[128] = {0};
 
     printf("Waiting for WiFi IP address...\n");
@@ -22,7 +22,7 @@ bool wait_for_station_ip(void) {
     printf("WiFi IP not acquired\n");
     return false;
 }
-void log_connection_status(void) {
+void connections_commands_log_connection_status(void) {
     char status_buffer[160] = {0};
 
     if (wifi_command_get_connection_status(status_buffer, sizeof(status_buffer)) == WIFI_OK) {

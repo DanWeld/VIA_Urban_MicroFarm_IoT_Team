@@ -15,7 +15,7 @@
 
 extern bool mqtt_connected;
 
-void handle_backend_command(const char *payload) {
+void commands_handle_backend_command(const char *payload) {
     if (strstr(payload, "\"actuator\":\"water_pump\"") != NULL) {
         const char *amount_ptr = strstr(payload, "\"amount_ml\":");
         uint16_t amount_ml = 0;
@@ -33,7 +33,7 @@ void handle_backend_command(const char *payload) {
 
 
 // Read all sensors
-void read_sensors(uint8_t *temp_int, uint8_t *temp_dec,
+void commands_read_sensors(uint8_t *temp_int, uint8_t *temp_dec,
                         uint8_t *hum_int, uint8_t *hum_dec,
                         uint16_t *light_value, uint16_t *soil_value) {
     dht11_get(hum_int, hum_dec, temp_int, temp_dec);
@@ -44,14 +44,14 @@ void read_sensors(uint8_t *temp_int, uint8_t *temp_dec,
     display_int((*temp_int) * 10 + (*temp_dec));
 }
 
-void display_sensor_values(void) {
+void commands_display_sensor_values(void) {
     uint8_t temp_int, temp_dec, hum_int, hum_dec;
     uint16_t light_value, soil_value;
     
-    read_sensors(&temp_int, &temp_dec, &hum_int, &hum_dec, &light_value, &soil_value);
+    commands_read_sensors(&temp_int, &temp_dec, &hum_int, &hum_dec, &light_value, &soil_value);
 }
 
-void build_telemetry_payload(char *payload, size_t size,
+void commands_build_telemetry_payload(char *payload, size_t size,
                                     uint8_t temp_int, uint8_t temp_dec,
                                     uint8_t hum_int, uint8_t hum_dec,
                                     uint16_t light_value, uint16_t soil_value) {
@@ -63,13 +63,13 @@ void build_telemetry_payload(char *payload, size_t size,
              setup_id, SENSOR_ID, temperature_x10, humidity_x10, light_value, soil_value);
 }
 
-void build_status_payload(char *payload, size_t size) {
+void commands_build_status_payload(char *payload, size_t size) {
     snprintf(payload, size,
              "{\"setup_id\":%u,\"status\":\"online\"}",
              setup_id);
 }
 
-void send_telemetry(void) {
+void commands_send_telemetry(void) {
     uint8_t temp_int, temp_dec, hum_int, hum_dec;
     uint16_t light_value, soil_value;
     char payload[256];
@@ -78,14 +78,14 @@ void send_telemetry(void) {
     // Allow DHT11 time to settle before reading (it was just read 100ms ago in display)
     _delay_ms(500);
     
-    read_sensors(&temp_int, &temp_dec, &hum_int, &hum_dec, &light_value, &soil_value);
-    build_telemetry_payload(payload, sizeof(payload), temp_int, temp_dec, hum_int, hum_dec, light_value, soil_value);
+    commands_read_sensors(&temp_int, &temp_dec, &hum_int, &hum_dec, &light_value, &soil_value);
+    commands_build_telemetry_payload(payload, sizeof(payload), temp_int, temp_dec, hum_int, hum_dec, light_value, soil_value);
 
     snprintf(topic, sizeof(topic), "farm/%u/inf", setup_id);
 
     if (mqtt_connected) {
         _delay_ms(500);  // Stabilize connection before send
-        if (mqtt_publish_telemetry(topic, payload)) {
+        if (mqtt_command_mqtt_publish_telemetry(topic, payload)) {
             printf("Telemetry published: %s\n", payload);
         } else {
             printf("Failed to publish telemetry\n");
@@ -98,11 +98,11 @@ void send_telemetry(void) {
 }
 
 
-void send_heartbeat(void) {
+void commands_send_heartbeat(void) {
     char payload[64];
     char topic[32];
     
-    build_status_payload(payload, sizeof(payload));
+    commands_build_status_payload(payload, sizeof(payload));
     snprintf(topic, sizeof(topic), "farm/%u/status", setup_id);
     
     if (mqtt_connected) {
@@ -111,7 +111,7 @@ void send_heartbeat(void) {
         // Try to publish with 2 retries
         uint8_t retry_count = 0;
         while (retry_count < 2) {
-            if (mqtt_publish_telemetry(topic, payload)) {
+            if (mqtt_command_mqtt_publish_telemetry(topic, payload)) {
                 _delay_ms(500);
                 return;
             }
