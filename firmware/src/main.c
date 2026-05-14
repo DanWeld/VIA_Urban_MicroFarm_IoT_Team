@@ -24,11 +24,8 @@
 #include "mqtt_commands.h"
 
 // Configuration
-//#define MQTT_BROKER_IP            "20.240.208.122"
-//#define MQTT_BROKER_PORT          1883
-//#define MQTT_CLIENT_ID            "arduino_mega_001"
+
 #define SETUP_ID                  1
-//#define SENSOR_ID                 1
 #define TELEMETRY_INTERVAL_SEC    15
 #define HEARTBEAT_INTERVAL_SEC    30
 #define SENSOR_DISPLAY_INTERVAL   5
