@@ -19,7 +19,6 @@
 #include "light.h"
 #include "soil.h"
 #include "wpump.h"
-#include "wpump_controller.h"
 
 // Configuration
 #define MQTT_BROKER_IP            "20.240.208.122"
@@ -41,7 +40,6 @@ static uint16_t sensor_display_counter = 0;    // Counts 100ms intervals (50 = 5
 static uint32_t millis_counter = 0;
 static bool mqtt_command_received = false;
 
-
 static void handle_backend_command(const char *payload) {
     if (strstr(payload, "\"actuator\":\"water_pump\"") != NULL) {
         const char *amount_ptr = strstr(payload, "\"amount_ml\":");
@@ -53,105 +51,27 @@ static void handle_backend_command(const char *payload) {
         }
 
         printf("MQTT command received: water_pump %u ml\n", amount_ml);
-        wpump_controller_dispense(amount_ml); // edit daniels main so it uses wpump_controller instead to ensure interrupt ps. Thank you Daniel
+        wpump_start();
+        for (uint16_t step = 0; step < amount_ml; step++) {
+            _delay_ms(100);
+        }
+        wpump_stop();
         printf("Water pump command completed\n");
     }
 }
 
-static bool mqtt_read_publish(uint8_t *packet,
-                              uint16_t packet_len,
-                              char *topic,
-                              size_t topic_size,
-                              char *payload,
-                              size_t payload_size)
-{
-    if (packet_len < 5) return false;
-
-    if ((packet[0] & 0xF0) != 0x30) {
-        return false;
-    }
-
-    uint16_t index = 1;
-
-    while (packet[index] & 0x80) {
-        index++;
-        if (index >= packet_len) return false;
-    }
-
-    index++;
-
-    uint16_t topic_len =
-        ((uint16_t)packet[index] << 8) | packet[index + 1];
-
-    index += 2;
-
-    if (topic_len >= topic_size) {
-        return false;
-    }
-
-    memcpy(topic, &packet[index], topic_len);
-
-    topic[topic_len] = '\0';
-
-    index += topic_len;
-
-    uint16_t payload_len = packet_len - index;
-
-    if (payload_len >= payload_size) {
-        payload_len = payload_size - 1;
-    }
-
-    memcpy(payload, &packet[index], payload_len);
-
-    payload[payload_len] = '\0';
-
-    return true;
-}
-
-    static void poll_mqtt_incoming(void) {
-        uint8_t packet[256];
-    uint16_t packet_len = 0;
-
-    char topic[64];
-    char payload[128];
-
+static void poll_mqtt_incoming(void) {
     if (!mqtt_connected) {
         return;
     }
 
-    if (wifi_command_TCP_receive(packet,
-                                 sizeof(packet),
-                                 &packet_len) != WIFI_OK) {
+    if (mqtt_rx_buffer[0] == '\0') {
         return;
     }
 
-    if (packet_len == 0) {
-        return;
-    }
-
-    if (!mqtt_read_publish(packet,
-                           packet_len,
-                           topic,
-                           sizeof(topic),
-                           payload,
-                           sizeof(payload))) {
-        return;
-    }
-
-    char expected_topic[32];
-
-    snprintf(expected_topic,
-             sizeof(expected_topic),
-             "farm/%u/cmd",
-             setup_id);
-
-    if (strcmp(topic, expected_topic) == 0) {
-
-        printf("MQTT topic: %s\n", topic);
-        printf("MQTT payload: %s\n", payload);
-
-        handle_backend_command(payload);
-
+    if (strstr(mqtt_rx_buffer, "farm/") != NULL && strstr(mqtt_rx_buffer, "/cmd") != NULL) {
+        handle_backend_command(mqtt_rx_buffer);
+        mqtt_rx_buffer[0] = '\0';
         mqtt_command_received = true;
     }
 }
@@ -452,7 +372,7 @@ int main(void) {
     
     // Connect to AP
     printf("Connecting to WiFi...\n");
-    if (wifi_command_join_AP("Dddd", "abc55555") != WIFI_OK) {
+    if (wifi_command_join_AP("3Bredband-CB45", "t+hPgqG^ma") != WIFI_OK) {
         printf("Failed to join AP\n");
         led_on(4);
         while (1);
