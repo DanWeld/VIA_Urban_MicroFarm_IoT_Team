@@ -187,7 +187,7 @@ int interactive_demo(void)
             printf("Enter IP address of TCP server to connect to: ");
             gets(_tmp_buff1); puts(_tmp_buff1); // Reusing _tmp_buff1 to store the IP address
 
-            WIFI_ERROR_MESSAGE_t message = wifi_command_create_TCP_connection(_tmp_buff1, 23, wifi_line_callback, _tmp_buff1);
+            WIFI_ERROR_MESSAGE_t message = wifi_command_create_TCP_connection(_tmp_buff1, 23, NULL, _tmp_buff1, sizeof(_tmp_buff1));
             if( message != WIFI_OK)
             {
                 printf("Failed to create TCP connection. %d\n", message);

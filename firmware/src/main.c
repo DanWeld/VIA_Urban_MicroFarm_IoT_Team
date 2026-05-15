@@ -314,7 +314,7 @@ static void send_heartbeat(void) {
 static bool mqtt_connect(void) {
     mqtt_rx_buffer[0] = '\0';
 
-    if (wifi_command_create_TCP_connection(MQTT_BROKER_IP, MQTT_BROKER_PORT, NULL, mqtt_rx_buffer) != WIFI_OK) {
+    if (wifi_command_create_TCP_connection(MQTT_BROKER_IP, MQTT_BROKER_PORT, NULL, mqtt_rx_buffer, sizeof(mqtt_rx_buffer)) != WIFI_OK) {
         printf("Failed to connect to MQTT broker\n");
         return false;
     }
