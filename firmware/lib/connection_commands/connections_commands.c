@@ -52,7 +52,7 @@ void create_connections(){
     
     // Connect to AP
     printf("Connecting to WiFi...\n");
-    if (wifi_command_join_AP("3Bredband-CB45", "t+hPgqG^ma") != WIFI_OK) {
+    if (wifi_command_join_AP("Dddd", "abc55555") != WIFI_OK) {
         printf("Failed to join AP\n");
         led_on(4);
         while (1);
