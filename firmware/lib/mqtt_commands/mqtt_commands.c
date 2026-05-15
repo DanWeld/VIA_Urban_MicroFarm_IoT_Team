@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <util/delay.h>
+#include <stdbool.h>
 
 #include "wifi.h"
 #include "commands.h"
@@ -16,7 +17,7 @@ extern uint32_t millis_counter;
 extern uint16_t setup_id;    
 extern uint16_t telemetry_counter;
 
-extern void mqtt_command_poll_mqtt_incoming(void) {
+void mqtt_command_poll_mqtt_incoming(void) {
     if (!mqtt_connected) {
         return;
     }
@@ -33,7 +34,7 @@ extern void mqtt_command_poll_mqtt_incoming(void) {
 }
 
 
-extern uint32_t mqtt_command_millis(void) {
+uint32_t mqtt_command_millis(void) {
     return millis_counter / 2;  // Assuming ~2ms per tick
 }
 

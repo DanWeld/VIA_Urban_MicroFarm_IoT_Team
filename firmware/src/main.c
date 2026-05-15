@@ -14,7 +14,6 @@
 #include "led.h"
 #include "display.h"
 #include "wifi.h"
-#include "dht11.h"
 #include "adc.h"
 #include "light.h"
 #include "soil.h"
@@ -22,6 +21,7 @@
 #include "commands.h"
 #include "connections_commands.h"
 #include "mqtt_commands.h"
+#include "system_init.h"
 
 // Configuration
 
@@ -42,11 +42,7 @@
 
 
 int main(void) {
-    display_init();
-    light_init();
-    soil_init(ADC_PK0);
-    wpump_configure();
-    wifi_init();
+    system_init();
     
     if (UART_OK != uart_stdio_init(115200)) {
         led_on(4);

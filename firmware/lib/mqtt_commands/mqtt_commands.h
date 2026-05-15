@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdbool.h>
 
 #define MQTT_CLIENT_ID            "arduino_mega_001"
 #define MQTT_BROKER_IP            "20.240.208.122"
