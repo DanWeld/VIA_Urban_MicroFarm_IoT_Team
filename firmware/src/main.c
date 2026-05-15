@@ -18,9 +18,9 @@
 #include "light.h"
 #include "soil.h"
 #include "wpump.h"
-#include "commands.h"
-#include "connections_commands.h"
-#include "mqtt_commands.h"
+#include "device_controller.h"
+#include "wifi_connection.h"
+#include "mqtt_client.h"
 #include "system_init.h"
 
 // Configuration

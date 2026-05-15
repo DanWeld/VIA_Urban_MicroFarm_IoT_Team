@@ -7,8 +7,8 @@
 #include <stdbool.h>
 
 #include "wifi.h"
-#include "commands.h"
-#include "mqtt_commands.h"
+#include "device_controller.h"
+#include "mqtt_client.h"
 
 extern bool mqtt_connected;
 extern char mqtt_rx_buffer[];

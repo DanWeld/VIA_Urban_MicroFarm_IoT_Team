@@ -5,7 +5,7 @@
 #include <avr/interrupt.h>
 #include "led.h"
 #include "wifi.h"
-#include "connections_commands.h"
+#include "wifi_connection.h"
 
 bool connections_commands_wait_for_station_ip(void) {
     char ip_buffer[128] = {0};

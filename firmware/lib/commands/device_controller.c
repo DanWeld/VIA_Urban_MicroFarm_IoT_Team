@@ -6,12 +6,12 @@
 #include <avr/interrupt.h>
 #include <stdbool.h>
 
-#include "commands.h"
+#include "device_controller.h"
 #include "dht11.h"
 #include "light.h"
 #include "soil.h"
 #include "display.h"
-#include "mqtt_commands.h"
+#include "mqtt_client.h"
 // please uncomment #include "wpump_controller.h" when add water pump converter branch is merged
 // it include  wpump_controller
 //#include "wpump_controller.h"
