@@ -4,29 +4,45 @@
 #define MILLI_SECOND_PER_SECOND 1000UL
 #define FACTOR 39UL
 
+typedef struct
+{
+    uint32_t max_ml;
+    int16_t compensation_ms;
+} wpump_compensation_step_t;
+
+static const wpump_compensation_step_t wpump_compensation_table[] = {
+    {25U, 500},
+    {50U, 300},
+    {75U, 100},
+    {100U, -100},
+    {125U, -300},
+    {150U, -600},
+    {175U, -800},
+    {200U, -1000},
+    {225U, -1250},
+    {250U, -1350},
+    {275U, -1600},
+    {300U, -1800},
+    {330U, -2000},
+    {350U, -2200},
+    {375U, -2500},
+    {400U, -2700},
+    {430U, -2800},
+    {460U, -3000},
+    {UINT32_MAX, -3700}
+};
+
 static int16_t get_compensation(uint32_t ml)
 {
-    if (ml <= 25)  return 500;
-    if (ml <= 50)  return 300;
-    if (ml <= 75)  return 100;
-    if (ml <= 100) return -100;
-    if (ml <= 125) return -300;
-    if (ml <= 150) return -600;
-    if (ml <= 175)  return -800;
-    if (ml <= 200)  return -1000;
-    if (ml <= 225)  return -1250;
-    if (ml <= 250) return -1350;
-    if (ml <= 275) return -1600;
-    if (ml <= 300) return -1800;
-    if (ml <= 330)  return -2000;
-    if (ml <= 350) return -2200;
-    if (ml <= 375) return -2500;
-    if (ml <= 400) return -2700;
-    if (ml <= 430)  return -2800;
-    if (ml <= 460) return -3000;
-    
+    for (uint8_t i = 0; i < (uint8_t)(sizeof(wpump_compensation_table) / sizeof(wpump_compensation_table[0])); ++i)
+    {
+        if (ml <= wpump_compensation_table[i].max_ml)
+        {
+            return wpump_compensation_table[i].compensation_ms;
+        }
+    }
 
-    return -3700;
+    return wpump_compensation_table[(sizeof(wpump_compensation_table) / sizeof(wpump_compensation_table[0])) - 1U].compensation_ms;
 }
 
 uint32_t wpump_converter_convert_mL_to_ms(uint32_t ml)
@@ -36,7 +52,7 @@ uint32_t wpump_converter_convert_mL_to_ms(uint32_t ml)
 
     base_time = (ml * MILLI_SECOND_PER_SECOND) / FACTOR;
 
-    corrected_time = (int32_t)base_time + get_compensation(ml);
+    corrected_time = (int32_t)base_time + (int32_t)get_compensation(ml);
 
     if (corrected_time < 0)
     {
