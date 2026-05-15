@@ -5,7 +5,6 @@
 #include "wifi.h"
 #include <string.h>
 #include <stdbool.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <util/delay.h>
 #include "uart.h"
@@ -304,7 +303,6 @@ WIFI_ERROR_MESSAGE_t wifi_command_close_TCP_connection(void) {
 WIFI_ERROR_MESSAGE_t wifi_command_quit_AP(void) {
     return wifi_send_command("AT+CWQAP", "OK", WIFI_TIMEOUT_MS);
 }
-
 
 WIFI_ERROR_MESSAGE_t wifi_command_TCP_receive(uint8_t *data,
                                               uint16_t max_len,
