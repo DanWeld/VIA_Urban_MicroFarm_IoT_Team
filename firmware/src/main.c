@@ -19,6 +19,7 @@
 #include "light.h"
 #include "soil.h"
 #include "wpump.h"
+#include "wpump_controller.h"
 
 // Configuration
 #define MQTT_BROKER_IP            "20.240.208.122"
@@ -51,11 +52,7 @@ static void handle_backend_command(const char *payload) {
         }
 
         printf("MQTT command received: water_pump %u ml\n", amount_ml);
-        wpump_start();
-        for (uint16_t step = 0; step < amount_ml; step++) {
-            _delay_ms(100);
-        }
-        wpump_stop();
+        wpump_controller_dispense(amount_ml);
         printf("Water pump command completed\n");
     }
 }
@@ -314,7 +311,7 @@ static void send_heartbeat(void) {
 static bool mqtt_connect(void) {
     mqtt_rx_buffer[0] = '\0';
 
-    if (wifi_command_create_TCP_connection(MQTT_BROKER_IP, MQTT_BROKER_PORT, NULL, mqtt_rx_buffer) != WIFI_OK) {
+    if (wifi_command_create_TCP_connection(MQTT_BROKER_IP, MQTT_BROKER_PORT, NULL, mqtt_rx_buffer, sizeof(mqtt_rx_buffer)) != WIFI_OK) {
         printf("Failed to connect to MQTT broker\n");
         return false;
     }
@@ -372,7 +369,7 @@ int main(void) {
     
     // Connect to AP
     printf("Connecting to WiFi...\n");
-    if (wifi_command_join_AP("3Bredband-CB45", "t+hPgqG^ma") != WIFI_OK) {
+    if (wifi_command_join_AP("iPhone", "Mita1234") != WIFI_OK) {
         printf("Failed to join AP\n");
         led_on(4);
         while (1);
