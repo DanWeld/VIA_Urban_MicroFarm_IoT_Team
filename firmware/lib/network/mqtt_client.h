@@ -1,27 +1,27 @@
-#include <stdint.h>
+#pragma once
 #include <stdbool.h>
 
-#define MQTT_CLIENT_ID            "arduino_mega_001"
-#define MQTT_BROKER_IP            "20.240.208.122"
-#define MQTT_BROKER_PORT          1883
+// Broker and device identity.
+// MQTT_CLIENT_ID must be unique per device on the broker.
+#define MQTT_CLIENT_ID   "arduino_mega_001"
+#define MQTT_BROKER_IP   "20.240.208.122"
+#define MQTT_BROKER_PORT 1883
 
+// Opens a TCP connection to the broker and sends an MQTT CONNECT packet.
+// Returns true when the connection is accepted, false on any failure.
+bool mqtt_connect(void);
 
-void mqtt_command_poll_mqtt_incoming(void);
+// Subscribes to the given topic at QoS 1.
+// Must be called after mqtt_connect() succeeds.
+// Returns true when the subscription was accepted, false on failure.
+bool mqtt_subscribe(const char *topic);
 
+// Publishes a UTF-8 payload to the given topic using MQTT QoS 0.
+// Returns true when the WiFi module accepted the transmission.
+bool mqtt_publish(const char *topic, const char *payload);
 
-uint32_t mqtt_command_millis(void);
-
-// MQTT: Encode remaining length for MQTT packet
-uint8_t mqtt_command_mqtt_encode_remaining_length(uint16_t value, uint8_t *out);
-
-// MQTT: Send CONNECT packet
-bool mqtt_command_mqtt_send_connect_packet(void);
-
-// MQTT: Send PUBLISH packet for telemetry
-bool mqtt_command_mqtt_publish_telemetry(const char *topic, const char *payload);
-
-// MQTT: Send SUBSCRIBE packet for commands
-bool mqtt_command_mqtt_subscribe_commands(void);
-
-// MQTT: Connections
-bool mqtt_command_mqtt_connect(void);
+// Checks the receive buffer for an inbound MQTT message.
+// If the topic matches the device command pattern ("farm/.../cmd"),
+// the payload is forwarded to the command handler.
+// Must be called regularly from the main loop.
+void mqtt_poll_incoming(void);
