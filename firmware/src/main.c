@@ -19,6 +19,7 @@
 #include "light.h"
 #include "soil.h"
 #include "wpump.h"
+#include "wpump_controller.h"
 
 // Configuration
 #define MQTT_BROKER_IP            "20.240.208.122"
@@ -51,11 +52,7 @@ static void handle_backend_command(const char *payload) {
         }
 
         printf("MQTT command received: water_pump %u ml\n", amount_ml);
-        wpump_start();
-        for (uint16_t step = 0; step < amount_ml; step++) {
-            _delay_ms(100);
-        }
-        wpump_stop();
+        wpump_controller_dispense(amount_ml);
         printf("Water pump command completed\n");
     }
 }
