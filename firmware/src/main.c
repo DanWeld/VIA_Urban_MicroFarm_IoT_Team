@@ -85,10 +85,13 @@ int main(void)
     uint16_t heartbeat_counter = 0;
     uint16_t display_counter   = 0;
 
+    while(1)
+    {
         // Drain the WiFi receive buffer. If a complete MQTT message arrived,
         // mqtt_poll_incoming() sets mqtt_command_received and fills mqtt_rx_buffer.
         mqtt_poll_incoming();
-        if (mqtt_command_received) {
+        if (mqtt_command_received) 
+        {
             device_handle_command(mqtt_rx_buffer);
             mqtt_rx_buffer[0] = '\0';
             mqtt_command_received = false;
@@ -98,30 +101,33 @@ int main(void)
         telemetry_counter++;
         heartbeat_counter++;
 
-        if (display_counter >= DISPLAY_INTERVAL) {
+        if (display_counter >= DISPLAY_INTERVAL) 
+        {
             device_display_sensor_values();
             display_counter = 0;
         }
 
-        if (telemetry_counter >= TELEMETRY_INTERVAL) {
+        if (telemetry_counter >= TELEMETRY_INTERVAL) 
+        {
             device_send_telemetry();
             telemetry_counter = 0;
         }
 
-        if (heartbeat_counter >= HEARTBEAT_INTERVAL) {
+        if (heartbeat_counter >= HEARTBEAT_INTERVAL) 
+        {
             device_send_heartbeat();
             heartbeat_counter = 0;
         }
 
         // If a publish failed, the connection flag is cleared by the sender.
         // Wait 5 seconds before retrying to avoid hammering a lost broker.
-        if (!mqtt_connected) {
+        if (!mqtt_connected) 
+        {
             _delay_ms(5000);
             mqtt_connected = mqtt_connect();
         }
 
         _delay_ms(100); // base loop tick: 100 ms
     }
-
     return 0;
 }
