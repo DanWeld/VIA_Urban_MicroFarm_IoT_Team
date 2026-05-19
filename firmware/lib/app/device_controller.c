@@ -107,7 +107,7 @@ void device_send_telemetry(void)
 
     // The DHT11 needs at least 2 seconds between reads. A 500 ms extra delay
     // here avoids collisions when display_sensor_values was called shortly before.
-    _delay_ms(500);
+    _delay_ms(2500);
 
     device_read_sensors(&temp_int, &temp_dec, &hum_int, &hum_dec,
                         &light_value, &soil_value);
@@ -122,7 +122,7 @@ void device_send_telemetry(void)
         printf("MQTT not connected - dropping telemetry: %s\n", payload);
         return;
     }
-
+    
     _delay_ms(500); // brief pause to let the TCP socket settle before transmit
 
     if (mqtt_publish(topic, payload)) {

@@ -170,7 +170,7 @@ bool mqtt_subscribe(const char *topic)
     memcpy(&packet[idx], topic, topic_len);
     idx += topic_len;
 
-    packet[idx++] = 0x01; // requested QoS: 1
+    packet[idx++] = 0x00; // requested QoS: 1
 
     if (wifi_command_TCP_transmit(packet, idx) != WIFI_OK) {
         printf("MQTT SUBSCRIBE failed for topic '%s'\n", topic);
@@ -238,12 +238,17 @@ bool mqtt_publish(const char *topic, const char *payload)
 void mqtt_poll_incoming(void)
 {
     if (!mqtt_connected)           return;
+     if (wifi_ipd_received) {
+        printf("IPD ontvangen! buffer: [%s]\n", mqtt_rx_buffer);
+        wifi_ipd_received = 0;
+    }
     if (mqtt_rx_buffer[0] == '\0') return; // nothing received since last poll
+
+    printf("RX buffer: [%s]\n", mqtt_rx_buffer);  // tijdelijk
 
     if (strstr(mqtt_rx_buffer, "farm/") != NULL &&
         strstr(mqtt_rx_buffer, "/cmd")  != NULL)
     {
-        mqtt_command_received(mqtt_rx_buffer);
         mqtt_command_received = true;
     }
 

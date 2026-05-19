@@ -135,7 +135,23 @@ WIFI_ERROR_MESSAGE_t wifi_command_TCP_transmit(uint8_t *data, uint16_t length);
 WIFI_ERROR_MESSAGE_t wifi_command_quit_AP();
 
 /**
+ * @brief Send AT+RST to reboot the module and wait for "ready".
+ *        Call this before wifi_configure() if the module may be in an
+ *        unknown state (e.g. after a microcontroller reset without power cycle).
+ *
+ * @return WIFI_ERROR_MESSAGE_t WIFI_OK when "ready" is received, error otherwise.
+ */
+WIFI_ERROR_MESSAGE_t wifi_command_reset(void);
+
+/**
  * @brief  Closes thhe TCP connection
  * @return WIFI_ERROR_MESSAGE_t Error message based on the response from the module.
  */
 WIFI_ERROR_MESSAGE_t wifi_command_close_TCP_connection();
+
+// Debug flag: set when a complete MQTT PUBLISH packet is received via +IPD.
+// Read and clear this from the main loop (never from ISR context).
+extern volatile uint8_t wifi_ipd_received;
+
+// Tijdelijk voor debugging: scan en print alle zichtbare netwerken
+void wifi_debug_scan(void);

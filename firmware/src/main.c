@@ -14,8 +14,8 @@
 // ── WiFi credentials ──────────────────────────────────────────────────────────
 // Defined here so they are never buried inside a library module.
 // Change these to match the local network before flashing.
-#define WIFI_SSID     "Dddd"
-#define WIFI_PASSWORD "abc55555"
+#define WIFI_SSID     "iottest"
+#define WIFI_PASSWORD "ArduinoTest"
 
 // ── Timing configuration ──────────────────────────────────────────────────────
 // All intervals are expressed in loop iterations. Each iteration sleeps 100 ms,

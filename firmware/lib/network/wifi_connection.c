@@ -12,6 +12,16 @@ bool wifi_configure(const char *ssid, const char *password)
     _delay_ms(4000);
     printf("Configuring WiFi module...\n");
 
+    // Reset the module to a known state before configuring.
+    // This clears any leftover state from a previous session.
+    wifi_command_reset();
+    _delay_ms(2000);
+
+    wifi_command_reset();
+_delay_ms(2000);
+wifi_debug_scan(); // tijdelijk
+    
+
     // Disable command echo so the receive buffer only contains
     // responses, not the commands we sent.
     if (wifi_command_disable_echo() != WIFI_OK) {
