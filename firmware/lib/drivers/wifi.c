@@ -198,21 +198,19 @@ static void wifi_handle_ipd_byte(uint8_t byte)
     }
 }
 
+// Called from the UART2 RX ISR for every received byte.
+// Non-IPD bytes accumulate in wifi_dataBuffer for AT command response parsing.
+// IPD payload bytes are routed to tcp_rx_buffer instead.
 static void wifi_rx_callback(uint8_t byte)
 {
-    uint8_t raw_byte  = byte;
-    uint8_t ascii_byte = byte;
-
-    if (wifi_dataBufferIndex < WIFI_DATABUFFERSIZE - 1) {
-        if (ascii_byte == 0U) ascii_byte = ' ';
-        if (ascii_byte == '\r' || ascii_byte == '\n' ||
-            (ascii_byte >= 0x20U && ascii_byte <= 0x7EU)) {
-            wifi_dataBuffer[wifi_dataBufferIndex++] = ascii_byte;
-            wifi_dataBuffer[wifi_dataBufferIndex]   = '\0';
+    if (ipd_state != IPD_DATA) 
+    {
+        if (wifi_dataBufferIndex < WIFI_DATABUFFERSIZE - 1) 
+        {
+            wifi_dataBuffer[wifi_dataBufferIndex++] = byte;
         }
+         wifi_handle_ipd_byte(byte);
     }
-
-    wifi_handle_ipd_byte(raw_byte);
 }
 
 void wifi_command_callback(uint8_t byte)
@@ -380,6 +378,8 @@ WIFI_ERROR_MESSAGE_t wifi_command_create_TCP_connection(char *IP, uint16_t port,
     _callback                         = callback_when_message_received;
     tcp_received_message_buffer       = received_message_buffer;
     tcp_received_message_buffer_size  = received_message_buffer_size;
+    tcp_rx_buffer                     = received_message_buffer;
+    tcp_rx_buffer_size                = received_message_buffer_size;
     wifi_clear_tcp_received_buffer();
     wifi_reset_ipd_parser();
 
