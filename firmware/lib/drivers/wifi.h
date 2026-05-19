@@ -148,10 +148,3 @@ WIFI_ERROR_MESSAGE_t wifi_command_reset(void);
  * @return WIFI_ERROR_MESSAGE_t Error message based on the response from the module.
  */
 WIFI_ERROR_MESSAGE_t wifi_command_close_TCP_connection();
-
-// Debug flag: set when a complete MQTT PUBLISH packet is received via +IPD.
-// Read and clear this from the main loop (never from ISR context).
-extern volatile uint8_t wifi_ipd_received;
-
-// Tijdelijk voor debugging: scan en print alle zichtbare netwerken
-void wifi_debug_scan(void);

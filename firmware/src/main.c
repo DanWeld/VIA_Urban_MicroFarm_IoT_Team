@@ -85,7 +85,6 @@ int main(void)
     uint16_t heartbeat_counter = 0;
     uint16_t display_counter   = 0;
 
-}
         // Drain the WiFi receive buffer. If a complete MQTT message arrived,
         // mqtt_poll_incoming() sets mqtt_command_received and fills mqtt_rx_buffer.
         mqtt_poll_incoming();
@@ -93,7 +92,7 @@ int main(void)
             device_handle_command(mqtt_rx_buffer);
             mqtt_rx_buffer[0] = '\0';
             mqtt_command_received = false;
-}
+        }   
 
         display_counter++;
         telemetry_counter++;

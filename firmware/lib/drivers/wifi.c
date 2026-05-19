@@ -422,7 +422,7 @@ WIFI_ERROR_MESSAGE_t wifi_command_TCP_transmit(uint8_t *data, uint16_t length)
     if      (wifi_dataBufferIndex == 0)                                error = WIFI_ERROR_NOT_RECEIVING;
     else if (strstr((char *)wifi_dataBuffer, "ERROR") != NULL)         error = WIFI_ERROR_RECEIVED_ERROR;
     else if (strstr((char *)wifi_dataBuffer, "FAIL")  != NULL)         error = WIFI_FAIL;
-    else                                                                error = WIFI_ERROR_RECEIVING_GARBAGE;
+    else                                                               error = WIFI_ERROR_RECEIVING_GARBAGE;
 
     wifi_clear_databuffer_and_index();
     _callback = prev_callback;
@@ -444,10 +444,3 @@ WIFI_ERROR_MESSAGE_t wifi_command_reset(void)
     return wifi_send_command("AT+RST", "ready", 6000);
 }
 
-void wifi_debug_scan(void)
-{
-    wifi_clear_databuffer_and_index();
-    uart_send_string_blocking(UART2_ID, "AT+CWLAP\r\n");
-    _delay_ms(10000);
-    printf("Scan: %s\n", (char *)wifi_dataBuffer);
-}
