@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#include "device_context.h"
 #include "uart_stdio.h"
 #include "led.h"
 #include "system_init.h"
@@ -24,17 +25,19 @@
 #define HEARTBEAT_INTERVAL  300  // 30 seconds between status publishes
 #define DISPLAY_INTERVAL     50  //  5 seconds between console sensor prints
 
-// ── Shared state ──────────────────────────────────────────────────────────────
-// Declared here and referenced via extern by mqtt_client and device_controller.
-// A single global bool is acceptable in a single-threaded embedded system where
-// the connection state must be visible across modules.
-bool     mqtt_connected        = false;
-char     mqtt_rx_buffer[256]   = {0};
-bool     mqtt_command_received = false;
-uint16_t setup_id              = 1;  // identifies this physical device to the backend
-
 int main(void)
 {
+    // Initialise shared application state. Passed by pointer to every module
+    // that needs connection status, the receive buffer, or the device identity.
+    // Using a context struct instead of extern globals makes all dependencies
+    // explicit and keeps the modules independently testable.
+    device_context_t ctx = {
+        .mqtt_connected        = false,
+        .mqtt_command_received = false,
+        .setup_id              = 1,    // identifies this physical device to the backend
+        .mqtt_rx_buffer        = {0},
+    };
+
     system_init(); // initialise peripherals (display, sensors, pump, WiFi UART)
 
     // UART0 doubles as stdin/stdout so printf reaches the PC terminal.
@@ -44,7 +47,7 @@ int main(void)
         while (1);
     }
 
-    sei(); // enable global interrupts (required by UART RX ISRs and Timer ISRs)
+    sei(); // enable global interrupts (required by UART RX ISRs and timer ISRs)
 
     // Connect to the WiFi access point. Credentials are defined above so they
     // are never hardcoded inside a library module.
@@ -64,18 +67,23 @@ int main(void)
 
     _delay_ms(2000); // allow DHCP to settle before opening a TCP socket
 
-    if (!mqtt_connect()) {
+    // Open a TCP connection to the broker and complete the MQTT handshake.
+    // ctx->mqtt_rx_buffer is registered with the WiFi driver here so all
+    // subsequent inbound bytes land in the context buffer.
+    if (!mqtt_connect(&ctx)) {
         printf("MQTT connection failed\n");
         led_on(4);
         while (1);
     }
 
+    // Subscribe to the command topic for this device so the broker forwards
+    // actuator commands (e.g. water pump) to us.
     char cmd_topic[32];
-    snprintf(cmd_topic, sizeof(cmd_topic), "farm/%u/cmd", setup_id);
+    snprintf(cmd_topic, sizeof(cmd_topic), "farm/%u/cmd", ctx.setup_id);
     mqtt_subscribe(cmd_topic);
 
-    mqtt_connected = true;
-    printf("Device ready. Setup ID: %u\n", setup_id);
+    ctx.mqtt_connected = true;
+    printf("Device ready. Setup ID: %u\n", ctx.setup_id);
 
     // ── Main loop ─────────────────────────────────────────────────────────────
     // Each iteration is ~100 ms (enforced by the _delay_ms at the bottom).
@@ -85,49 +93,51 @@ int main(void)
     uint16_t heartbeat_counter = 0;
     uint16_t display_counter   = 0;
 
-    while(1)
+    while (1)
     {
-        // Drain the WiFi receive buffer. If a complete MQTT message arrived,
-        // mqtt_poll_incoming() sets mqtt_command_received and fills mqtt_rx_buffer.
-        mqtt_poll_incoming();
-        if (mqtt_command_received) 
+        // Drain the WiFi receive buffer. If a complete MQTT PUBLISH arrived,
+        // mqtt_poll_incoming sets ctx.mqtt_command_received and the payload
+        // sits in ctx.mqtt_rx_buffer ready for the command handler below.
+        mqtt_poll_incoming(&ctx);
+        if (ctx.mqtt_command_received)
         {
-            device_handle_command(mqtt_rx_buffer);
-            mqtt_rx_buffer[0] = '\0';
-            mqtt_command_received = false;
-        }   
+            device_handle_command(ctx.mqtt_rx_buffer);
+            ctx.mqtt_rx_buffer[0]     = '\0';  // clear buffer for next message
+            ctx.mqtt_command_received = false;
+        }
 
         display_counter++;
         telemetry_counter++;
         heartbeat_counter++;
 
-        if (display_counter >= DISPLAY_INTERVAL) 
+        if (display_counter >= DISPLAY_INTERVAL)
         {
             device_display_sensor_values();
             display_counter = 0;
         }
 
-        if (telemetry_counter >= TELEMETRY_INTERVAL) 
+        if (telemetry_counter >= TELEMETRY_INTERVAL)
         {
-            device_send_telemetry();
+            device_send_telemetry(&ctx);
             telemetry_counter = 0;
         }
 
-        if (heartbeat_counter >= HEARTBEAT_INTERVAL) 
+        if (heartbeat_counter >= HEARTBEAT_INTERVAL)
         {
-            device_send_heartbeat();
+            device_send_heartbeat(&ctx);
             heartbeat_counter = 0;
         }
 
-        // If a publish failed, the connection flag is cleared by the sender.
+        // If a publish failed, ctx.mqtt_connected was cleared by the sender.
         // Wait 5 seconds before retrying to avoid hammering a lost broker.
-        if (!mqtt_connected) 
+        if (!ctx.mqtt_connected)
         {
             _delay_ms(5000);
-            mqtt_connected = mqtt_connect();
+            ctx.mqtt_connected = mqtt_connect(&ctx);
         }
 
         _delay_ms(100); // base loop tick: 100 ms
     }
+
     return 0;
 }

@@ -6,33 +6,16 @@
 #include <stdio.h>
 #include <util/delay.h>
 
-// ── Shared state ──────────────────────────────────────────────────────────────
-// These variables are declared in main.c and shared across modules via extern.
-// mqtt_connected   – tracks whether the broker connection is currently active.
-//                    Set to false by publish functions on failure, so main.c
-//                    knows to reconnect.
-// mqtt_rx_buffer   – shared receive buffer. The WiFi driver writes every byte
-//                    it receives from the ESP8266 into this buffer. When the
-//                    broker sends a message to the device, it arrives here.
-//                    mqtt_poll_incoming() reads and clears this buffer each loop.
-// mqtt_command_received – flag set to true when an inbound command has been
-//                    processed, so main.c can react if needed.
-extern bool  mqtt_connected;
-extern char  mqtt_rx_buffer[];
-extern bool  mqtt_command_received;
-
-// ── Internal helpers ──────────────────────────────────────────────────────────
-
 // MQTT uses a variable-length encoding for the "remaining length" field in
-// every packet header. Each byte stores 7 bits of the value. If the value
-// is larger than 127, the MSB of the current byte is set to 1 to signal
-// that another byte follows. This allows lengths up to 268 MB using 4 bytes.
+// every packet header. Each byte stores 7 bits of the value; if the value
+// exceeds 127 the MSB is set to signal that another byte follows.
+// This allows lengths up to 268 MB using at most 4 bytes.
 //
 // Examples:
-//   value = 20  → [0x14]           (1 byte, fits in 7 bits)
-//   value = 200 → [0xC8, 0x01]     (2 bytes, MSB set on first byte)
+//   value = 20  → [0x14]        (fits in 7 bits, 1 byte)
+//   value = 200 → [0xC8, 0x01]  (MSB set on first byte, 2 bytes total)
 //
-// Writes encoded bytes into 'out' and returns how many bytes were written.
+// Writes the encoded bytes into 'out' and returns the number of bytes written.
 static uint8_t encode_remaining_length(uint16_t value, uint8_t *out)
 {
     uint8_t idx = 0;
@@ -47,19 +30,18 @@ static uint8_t encode_remaining_length(uint16_t value, uint8_t *out)
 
 // Builds and transmits an MQTT CONNECT packet to the broker.
 //
-// The CONNECT packet tells the broker who we are and how we want to connect.
 // Packet structure:
 //   [0x10]          – packet type: CONNECT
-//   [remaining len] – encoded length of everything that follows
-//   [0x00 0x04]     – length of protocol name (4 bytes)
+//   [remaining len] – variable-length encoded size of everything that follows
+//   [0x00 0x04]     – length prefix for the protocol name (4 bytes)
 //   [M Q T T]       – protocol name
-//   [0x04]          – protocol level: 4 = MQTT version 3.1.1
+//   [0x04]          – protocol level 4 = MQTT version 3.1.1
 //   [0x02]          – connect flags: clean session (no persistent state on broker)
 //   [0x00 0x3C]     – keep-alive: 60 seconds (broker disconnects if silent longer)
-//   [len high/low]  – length of client ID
+//   [len high/low]  – length prefix for the client ID
 //   [client ID]     – unique identifier for this device on the broker
 //
-// No username, password, or will message are used – anonymous connection.
+// No username, password, or will message are used — anonymous connection.
 // Returns true if the packet was transmitted successfully.
 static bool send_connect_packet(void)
 {
@@ -91,28 +73,26 @@ static bool send_connect_packet(void)
     return wifi_command_TCP_transmit(packet, idx) == WIFI_OK;
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
-
 // Opens a TCP connection to the broker and performs the MQTT handshake.
 //
-// Step 1: Open a TCP socket to the broker IP and port. The WiFi driver is
-//         given mqtt_rx_buffer so that any bytes the broker sends back
-//         (CONNACK, incoming publishes) are stored there automatically.
+// Step 1: Open a TCP socket to the broker. ctx->mqtt_rx_buffer is passed to
+//         the WiFi driver so any bytes the broker sends back (CONNACK, incoming
+//         publishes) are stored there and available to mqtt_poll_incoming().
 // Step 2: Send an MQTT CONNECT packet identifying this device.
-// Step 3: Wait for CONNACK (broker confirmation). We wait 1 second rather
-//         than parsing the CONNACK byte-by-byte for simplicity.
+// Step 3: Wait 1 second for CONNACK. We use a fixed delay rather than parsing
+//         the CONNACK byte-by-byte to keep the implementation simple.
 //
 // Returns true if the full handshake succeeded, false on any failure.
 // On failure the TCP socket is closed to avoid leaving it half-open.
-bool mqtt_connect(void)
+bool mqtt_connect(device_context_t *ctx)
 {
-    // Clear the buffer before connecting so old data does not confuse
+    // Clear the buffer before connecting so stale data does not confuse
     // mqtt_poll_incoming() during the handshake.
-    mqtt_rx_buffer[0] = '\0';
+    ctx->mqtt_rx_buffer[0] = '\0';
 
     if (wifi_command_create_TCP_connection(
             MQTT_BROKER_IP, MQTT_BROKER_PORT,
-            NULL, mqtt_rx_buffer, 256) != WIFI_OK) {
+            NULL, ctx->mqtt_rx_buffer, MQTT_RX_BUFFER_SIZE) != WIFI_OK) {
         printf("TCP connection to broker failed\n");
         return false;
     }
@@ -133,20 +113,13 @@ bool mqtt_connect(void)
 
 // Sends an MQTT SUBSCRIBE packet for the given topic at QoS 1.
 //
-// Subscribing tells the broker to forward any message published on this
-// topic to our device. QoS 1 means the broker retries delivery until it
-// receives an acknowledgement, so commands are not silently lost.
-//
 // Packet structure:
 //   [0x82]          – packet type: SUBSCRIBE (0x80) + reserved bit (0x02)
-//   [remaining len] – encoded length of everything that follows
-//   [0x00 0x01]     – packet identifier (fixed at 1, we have one subscription)
-//   [len high/low]  – length of topic string
+//   [remaining len] – variable-length encoded size of everything that follows
+//   [0x00 0x01]     – packet identifier (fixed at 1; we have one subscription)
+//   [len high/low]  – length prefix for the topic string
 //   [topic]         – topic filter to subscribe to
 //   [0x01]          – requested QoS level: 1
-//
-// Must be called after mqtt_connect() succeeds.
-// Returns true when the packet was transmitted, false on failure.
 bool mqtt_subscribe(const char *topic)
 {
     uint8_t  packet[128];
@@ -181,20 +154,14 @@ bool mqtt_subscribe(const char *topic)
     return true;
 }
 
-// Publishes a message to the given topic using MQTT QoS 0.
-//
-// QoS 0 means fire-and-forget: the packet is sent once with no
-// acknowledgement or retry. Suitable for sensor telemetry where an
-// occasional missed reading is acceptable.
+// Publishes a message to the given topic using MQTT QoS 0 (fire-and-forget).
 //
 // Packet structure:
 //   [0x30]          – packet type: PUBLISH, QoS 0, no retain flag
-//   [remaining len] – encoded length of everything that follows
-//   [len high/low]  – length of topic string
+//   [remaining len] – variable-length encoded size of everything that follows
+//   [len high/low]  – length prefix for the topic string
 //   [topic]         – destination topic
 //   [payload]       – raw UTF-8 message body (no length prefix at QoS 0)
-//
-// Returns true when the WiFi module accepted the transmission.
 bool mqtt_publish(const char *topic, const char *payload)
 {
     uint8_t  packet[512];
@@ -222,27 +189,25 @@ bool mqtt_publish(const char *topic, const char *payload)
     return wifi_command_TCP_transmit(packet, idx) == WIFI_OK;
 }
 
-// Checks the shared receive buffer for an inbound MQTT message from the broker.
+// Checks ctx->mqtt_rx_buffer for an inbound MQTT message from the broker.
 //
-// The WiFi driver writes incoming bytes into mqtt_rx_buffer as they arrive
-// over the TCP connection. This function inspects the buffer each loop cycle.
+// The WiFi driver writes incoming bytes into ctx->mqtt_rx_buffer as they
+// arrive over the TCP connection. This function inspects the buffer each
+// loop cycle and sets ctx->mqtt_command_received when a command message
+// is detected so the main loop can dispatch it to device_handle_command().
 //
 // Only messages on the device command topic ("farm/.../cmd") are acted upon.
-// All other inbound packets – CONNACK, SUBACK, PINGRESP – are silently
-// discarded. They are not needed because we use fixed delays after connect
-// and subscribe instead of parsing acknowledgements byte-by-byte.
-//
-// When a command message is detected, it is forwarded to the command handler
-// in device_controller and the buffer is cleared for the next message.
-void mqtt_poll_incoming(void)
+// All other inbound packets — CONNACK, SUBACK, PINGRESP — are silently
+// discarded because we use fixed delays after connect and subscribe instead
+// of parsing acknowledgements byte-by-byte.
+void mqtt_poll_incoming(device_context_t *ctx)
 {
-    if (!mqtt_connected) return;
+    if (!ctx->mqtt_connected) return;
+    if (ctx->mqtt_rx_buffer[0] == '\0') return;
 
-    if (mqtt_rx_buffer[0] == '\0') return;
-
-    if (strstr(mqtt_rx_buffer, "farm/") != NULL &&
-        strstr(mqtt_rx_buffer, "/cmd")  != NULL)
+    if (strstr(ctx->mqtt_rx_buffer, "farm/") != NULL &&
+        strstr(ctx->mqtt_rx_buffer, "/cmd")  != NULL)
     {
-        mqtt_command_received = true;
+        ctx->mqtt_command_received = true;
     }
 }
