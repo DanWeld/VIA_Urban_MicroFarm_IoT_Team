@@ -20,7 +20,7 @@ static void wpump_callback(uint8_t id)
 
 void wpump_controller_dispense(uint32_t ml)
 {
-    if (ml > LIMIT)
+    if (ml ==0 || ml>WPUMP_MAX_ML)
     {
         return; // the number is too big
     }

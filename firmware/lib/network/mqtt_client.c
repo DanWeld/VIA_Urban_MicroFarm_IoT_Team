@@ -113,7 +113,7 @@ bool mqtt_connect(void)
 
     if (wifi_command_create_TCP_connection(
             MQTT_BROKER_IP, MQTT_BROKER_PORT,
-            NULL, mqtt_rx_buffer) != WIFI_OK) {
+            NULL, mqtt_rx_buffer, 256) != WIFI_OK) {
         printf("TCP connection to broker failed\n");
         return false;
     }
@@ -243,7 +243,7 @@ void mqtt_poll_incoming(void)
     if (strstr(mqtt_rx_buffer, "farm/") != NULL &&
         strstr(mqtt_rx_buffer, "/cmd")  != NULL)
     {
-        commands_handle_backend_command(mqtt_rx_buffer);
+        mqtt_command_received(mqtt_rx_buffer);
         mqtt_command_received = true;
     }
 

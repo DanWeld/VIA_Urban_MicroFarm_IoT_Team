@@ -33,7 +33,7 @@ bool wifi_configure(const char *ssid, const char *password)
     }
 
     printf("Connecting to network '%s'...\n", ssid);
-    if (wifi_command_join_AP(ssid, password) != WIFI_OK) {
+    if (wifi_command_join_AP((char *)ssid, (char *)password) != WIFI_OK) {
         printf("Failed to join network '%s'\n", ssid);
         return false;
     }

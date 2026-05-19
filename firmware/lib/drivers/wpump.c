@@ -1,6 +1,4 @@
 #include "wpump.h"
-#include "button.h"
-#include "timer.h"
 
 #include <stdint.h>
 #include <avr/io.h>
