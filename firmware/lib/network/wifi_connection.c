@@ -18,9 +18,7 @@ bool wifi_configure(const char *ssid, const char *password)
     _delay_ms(2000);
 
     wifi_command_reset();
-_delay_ms(2000);
-wifi_debug_scan(); // tijdelijk
-    
+    _delay_ms(2000);
 
     // Disable command echo so the receive buffer only contains
     // responses, not the commands we sent.

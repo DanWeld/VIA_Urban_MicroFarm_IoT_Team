@@ -236,21 +236,13 @@ bool mqtt_publish(const char *topic, const char *payload)
 // in device_controller and the buffer is cleared for the next message.
 void mqtt_poll_incoming(void)
 {
-    if (!mqtt_connected)           return;
-     if (wifi_ipd_received) {
-        printf("IPD ontvangen! buffer: [%s]\n", mqtt_rx_buffer);
-        wifi_ipd_received = 0;
-    }
-    if (mqtt_rx_buffer[0] == '\0') return; // nothing received since last poll
+    if (!mqtt_connected) return;
 
-    printf("RX buffer: [%s]\n", mqtt_rx_buffer);  // tijdelijk
+    if (mqtt_rx_buffer[0] == '\0') return;
 
     if (strstr(mqtt_rx_buffer, "farm/") != NULL &&
         strstr(mqtt_rx_buffer, "/cmd")  != NULL)
     {
         mqtt_command_received = true;
     }
-
-    // Clear the buffer so the next poll starts with fresh data.
-    mqtt_rx_buffer[0] = '\0';
 }
