@@ -1,5 +1,4 @@
 #include "mqtt_client.h"
-#include "device_controller.h"
 #include "wifi.h"
 
 #include <stdint.h>

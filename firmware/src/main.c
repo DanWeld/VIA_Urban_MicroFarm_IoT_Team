@@ -70,6 +70,10 @@ int main(void)
         while (1);
     }
 
+    char cmd_topic[32];
+    snprintf(cmd_topic, sizeof(cmd_topic), "farm/%u/cmd", setup_id);
+    mqtt_subscribe(cmd_topic);
+
     mqtt_connected = true;
     printf("Device ready. Setup ID: %u\n", setup_id);
 
@@ -81,14 +85,20 @@ int main(void)
     uint16_t heartbeat_counter = 0;
     uint16_t display_counter   = 0;
 
+    extern volatile uint8_t wifi_ipd_received;
+
     while (1) {
+        if (wifi_ipd_received) {
+    printf("IPD ontvangen! Buffer: %s\n", mqtt_rx_buffer);
+    wifi_ipd_received = 0;
+}
         // Drain the WiFi receive buffer. If a complete MQTT message arrived,
         // mqtt_poll_incoming() sets mqtt_command_received and fills mqtt_rx_buffer.
         mqtt_poll_incoming();
         if (mqtt_command_received) {
+            commands_handle_backend_command(mqtt_rx_buffer);
             mqtt_command_received = false;
-            device_handle_command(mqtt_rx_buffer);
-        }
+}
 
         display_counter++;
         telemetry_counter++;

@@ -3,33 +3,33 @@
  * @brief ESP8266 WiFi module driver with AT command implementation
  */
 #include "wifi.h"
+#include "uart.h"
+
 #include <string.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <util/delay.h>
-#include "uart.h"
 
 #define WIFI_DATABUFFERSIZE 256
 #define WIFI_TIMEOUT_MS 5000
 
 static uint8_t  wifi_dataBuffer[WIFI_DATABUFFERSIZE];
 static uint8_t  wifi_dataBufferIndex;
-static uint32_t wifi_baudrate;
 static void   (*_callback)(uint8_t byte);
+
 static char    *tcp_received_message_buffer      = NULL;
 static uint16_t tcp_received_message_buffer_size  = 0;
 static uint16_t tcp_received_message_buffer_index = 0;
 
-static uint8_t  ipd_prefix_index       = 0;
-static uint16_t ipd_expected_length    = 0;
-static uint16_t ipd_payload_index      = 0;
-static uint8_t  ipd_length_buffer[6]   = {0};
+static uint8_t  ipd_prefix_index        = 0;
+static uint16_t ipd_expected_length     = 0;
+static uint16_t ipd_payload_index       = 0;
+static uint8_t  ipd_length_buffer[6]    = {0};
 static uint8_t  ipd_length_buffer_index = 0;
 static uint8_t  ipd_collecting_payload  = 0;
 static uint8_t  ipd_packet_buffer[256];
 
-// Debug flag: set by wifi_store_mqtt_command, read from main loop context.
-// Declared volatile because it is written from ISR context.
 volatile uint8_t wifi_ipd_received = 0;
 
 static void wifi_clear_tcp_received_buffer(void)
@@ -44,7 +44,6 @@ static void wifi_append_to_ascii_buffer(char *buffer, uint16_t buffer_size,
                                          uint16_t *buffer_index, uint8_t byte)
 {
     if (buffer == NULL || buffer_size == 0 || buffer_index == NULL) return;
-
     if (*buffer_index < (uint16_t)(buffer_size - 1U)) {
         buffer[*buffer_index] = (char)byte;
         (*buffer_index)++;
@@ -73,12 +72,11 @@ static void wifi_store_mqtt_command(const uint8_t *packet, uint16_t length)
     // Only handle PUBLISH packets (type 0x30)
     if ((packet[0] & 0xF0U) != 0x30U) return;
 
-    uint16_t index           = 1U;
+    uint16_t index            = 1U;
     uint32_t remaining_length = 0U;
-    uint32_t multiplier      = 1U;
-    uint8_t  encoded_byte    = 0U;
+    uint32_t multiplier       = 1U;
+    uint8_t  encoded_byte     = 0U;
 
-    // Decode variable-length remaining length field
     do {
         if (index >= length) return;
         encoded_byte       = packet[index++];
@@ -90,7 +88,6 @@ static void wifi_store_mqtt_command(const uint8_t *packet, uint16_t length)
 
     if ((uint16_t)(index + 2U) > length) return;
 
-    // Extract topic
     uint16_t topic_length = ((uint16_t)packet[index] << 8) | (uint16_t)packet[index + 1U];
     index += 2U;
 
@@ -100,7 +97,6 @@ static void wifi_store_mqtt_command(const uint8_t *packet, uint16_t length)
     uint16_t topic_copy_length = topic_length < (uint16_t)(sizeof(topic) - 1U)
                                  ? topic_length
                                  : (uint16_t)(sizeof(topic) - 1U);
-
     for (uint16_t i = 0; i < topic_copy_length; i++) {
         topic[i] = (char)packet[index + i];
     }
@@ -115,7 +111,6 @@ static void wifi_store_mqtt_command(const uint8_t *packet, uint16_t length)
 
     if (index > length) return;
 
-    // Write "topic payload" into the receive buffer
     for (uint16_t i = 0; topic[i] != '\0'; i++) {
         wifi_append_to_ascii_buffer(tcp_received_message_buffer,
                                     tcp_received_message_buffer_size,
@@ -133,7 +128,6 @@ static void wifi_store_mqtt_command(const uint8_t *packet, uint16_t length)
                                     packet[index++]);
     }
 
-    // Signal to the main loop that a complete MQTT message has been received.
     wifi_ipd_received = 1;
 }
 
@@ -144,7 +138,6 @@ static void wifi_handle_ipd_byte(uint8_t byte)
             if (byte == '+') ipd_packet_buffer[ipd_prefix_index++] = byte;
             return;
         }
-
         if (ipd_prefix_index < 4U) {
             ipd_packet_buffer[ipd_prefix_index++] = byte;
             if ((ipd_prefix_index == 2U && byte != 'I') ||
@@ -154,7 +147,6 @@ static void wifi_handle_ipd_byte(uint8_t byte)
             }
             return;
         }
-
         if (ipd_prefix_index == 4U) {
             if (byte == ',') {
                 ipd_prefix_index++;
@@ -165,21 +157,18 @@ static void wifi_handle_ipd_byte(uint8_t byte)
             wifi_reset_ipd_parser();
             return;
         }
-
         if (byte == ':') {
             ipd_expected_length    = (uint16_t)atoi((char *)ipd_length_buffer);
             ipd_collecting_payload = 1U;
             ipd_payload_index      = 0U;
             return;
         }
-
         if (byte >= '0' && byte <= '9' &&
             ipd_length_buffer_index < (uint8_t)(sizeof(ipd_length_buffer) - 1U)) {
             ipd_length_buffer[ipd_length_buffer_index++] = byte;
             ipd_length_buffer[ipd_length_buffer_index]   = '\0';
             return;
         }
-
         wifi_reset_ipd_parser();
         return;
     }
@@ -198,19 +187,12 @@ static void wifi_handle_ipd_byte(uint8_t byte)
     }
 }
 
-// Called from the UART2 RX ISR for every received byte.
-// Non-IPD bytes accumulate in wifi_dataBuffer for AT command response parsing.
-// IPD payload bytes are routed to tcp_rx_buffer instead.
 static void wifi_rx_callback(uint8_t byte)
 {
-    if (ipd_state != IPD_DATA) 
-    {
-        if (wifi_dataBufferIndex < WIFI_DATABUFFERSIZE - 1) 
-        {
-            wifi_dataBuffer[wifi_dataBufferIndex++] = byte;
-        }
-         wifi_handle_ipd_byte(byte);
+    if (wifi_dataBufferIndex < WIFI_DATABUFFERSIZE - 1) {
+        wifi_dataBuffer[wifi_dataBufferIndex++] = byte;
     }
+    wifi_handle_ipd_byte(byte);
 }
 
 void wifi_command_callback(uint8_t byte)
@@ -250,12 +232,10 @@ static WIFI_ERROR_MESSAGE_t wifi_send_command(const char *command,
             strstr((char *)wifi_dataBuffer, expected_response) != NULL) {
             return WIFI_OK;
         }
-
         if (expected_response && strcmp(expected_response, "OK") != 0 &&
             strstr((char *)wifi_dataBuffer, "OK") != NULL) {
             return WIFI_OK;
         }
-
         if (strstr((char *)wifi_dataBuffer, "ERROR") != NULL) {
             printf("[wifi] ERROR response for '%s': %s\n", command, (char *)wifi_dataBuffer);
             return WIFI_ERROR_RECEIVED_ERROR;
@@ -271,13 +251,11 @@ static WIFI_ERROR_MESSAGE_t wifi_send_command(const char *command,
                command, (unsigned long)timeout_ms);
         return WIFI_ERROR_NOT_RECEIVING;
     }
-
     if (expected_response != NULL) {
         printf("[wifi] unexpected response for '%s': %s\n",
                command, (char *)wifi_dataBuffer);
         return WIFI_ERROR_RECEIVING_GARBAGE;
     }
-
     return WIFI_OK;
 }
 
@@ -351,8 +329,8 @@ WIFI_ERROR_MESSAGE_t wifi_command_join_AP(char *ssid, char *password)
             _delay_ms(200);
             elapsed += 200;
 
-            if (strstr((char *)wifi_dataBuffer, "WIFI GOT IP") != NULL)   return WIFI_OK;
-            if (strstr((char *)wifi_dataBuffer, "WIFI CONNECTED") != NULL) return WIFI_OK;
+            if (strstr((char *)wifi_dataBuffer, "WIFI GOT IP") != NULL)    return WIFI_OK;
+            if (strstr((char *)wifi_dataBuffer, "WIFI CONNECTED") != NULL)  return WIFI_OK;
             if (strstr((char *)wifi_dataBuffer, "ERROR") != NULL) {
                 printf("[wifi] CWJAP ERROR: %s\n", (char *)wifi_dataBuffer);
                 break;
@@ -378,8 +356,6 @@ WIFI_ERROR_MESSAGE_t wifi_command_create_TCP_connection(char *IP, uint16_t port,
     _callback                         = callback_when_message_received;
     tcp_received_message_buffer       = received_message_buffer;
     tcp_received_message_buffer_size  = received_message_buffer_size;
-    tcp_rx_buffer                     = received_message_buffer;
-    tcp_rx_buffer_size                = received_message_buffer_size;
     wifi_clear_tcp_received_buffer();
     wifi_reset_ipd_parser();
 
@@ -416,7 +392,6 @@ WIFI_ERROR_MESSAGE_t wifi_command_TCP_transmit(uint8_t *data, uint16_t length)
     }
 
     WIFI_ERROR_MESSAGE_t error;
-
     if (!prompt_received) {
         if      (wifi_dataBufferIndex == 0)                                error = WIFI_ERROR_NOT_RECEIVING;
         else if (strstr((char *)wifi_dataBuffer, "ERROR") != NULL)         error = WIFI_ERROR_RECEIVED_ERROR;

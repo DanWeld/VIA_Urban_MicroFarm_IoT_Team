@@ -7,6 +7,7 @@
 #define MQTT_BROKER_IP   "20.240.208.122"
 #define MQTT_BROKER_PORT 1883
 
+
 // Opens a TCP connection to the broker and sends an MQTT CONNECT packet.
 // Returns true when the connection is accepted, false on any failure.
 bool mqtt_connect(void);
