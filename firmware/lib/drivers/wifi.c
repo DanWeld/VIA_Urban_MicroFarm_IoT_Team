@@ -16,18 +16,209 @@ static uint8_t wifi_dataBuffer[WIFI_DATABUFFERSIZE];
 static uint8_t wifi_dataBufferIndex;
 static uint32_t wifi_baudrate;
 static void (*_callback)(uint8_t byte);
+static char *tcp_received_message_buffer = NULL;
+static uint16_t tcp_received_message_buffer_size = 0;
+static uint16_t tcp_received_message_buffer_index = 0;
+
+static uint8_t ipd_prefix_index = 0;
+static uint16_t ipd_expected_length = 0;
+static uint16_t ipd_payload_index = 0;
+static uint8_t ipd_length_buffer[6] = {0};
+static uint8_t ipd_length_buffer_index = 0;
+static uint8_t ipd_collecting_payload = 0;
+static uint8_t ipd_packet_buffer[256];
+
+static void wifi_clear_tcp_received_buffer(void) {
+    if (tcp_received_message_buffer != NULL && tcp_received_message_buffer_size > 0) {
+        tcp_received_message_buffer[0] = '\0';
+    }
+    tcp_received_message_buffer_index = 0;
+}
+
+static void wifi_append_to_ascii_buffer(char *buffer, uint16_t buffer_size, uint16_t *buffer_index, uint8_t byte) {
+    if (buffer == NULL || buffer_size == 0 || buffer_index == NULL) {
+        return;
+    }
+
+    if (*buffer_index < (uint16_t)(buffer_size - 1U)) {
+        buffer[*buffer_index] = (char)byte;
+        (*buffer_index)++;
+        buffer[*buffer_index] = '\0';
+    }
+}
+
+static void wifi_reset_ipd_parser(void) {
+    ipd_prefix_index = 0;
+    ipd_expected_length = 0;
+    ipd_payload_index = 0;
+    ipd_length_buffer_index = 0;
+    ipd_collecting_payload = 0;
+}
+
+static void wifi_store_mqtt_command(const uint8_t *packet, uint16_t length) {
+    if (tcp_received_message_buffer == NULL || tcp_received_message_buffer_size == 0) {
+        return;
+    }
+
+    tcp_received_message_buffer[0] = '\0';
+    tcp_received_message_buffer_index = 0;
+
+    if (packet == NULL || length < 4U) {
+        return;
+    }
+
+    if ((packet[0] & 0xF0U) != 0x30U) {
+        return;
+    }
+
+    uint16_t index = 1U;
+    uint32_t remaining_length = 0U;
+    uint32_t multiplier = 1U;
+    uint8_t encoded_byte = 0U;
+
+    do {
+        if (index >= length) {
+            return;
+        }
+
+        encoded_byte = packet[index++];
+        remaining_length += (uint32_t)(encoded_byte & 0x7FU) * multiplier;
+        multiplier *= 128U;
+    } while ((encoded_byte & 0x80U) != 0U);
+
+    (void)remaining_length;
+
+    if ((uint16_t)(index + 2U) > length) {
+        return;
+    }
+
+    uint16_t topic_length = ((uint16_t)packet[index] << 8) | (uint16_t)packet[index + 1U];
+    index += 2U;
+
+    if ((uint16_t)(index + topic_length) > length) {
+        return;
+    }
+
+    char topic[64];
+    uint16_t topic_copy_length = topic_length;
+    if (topic_copy_length >= sizeof(topic)) {
+        topic_copy_length = (uint16_t)(sizeof(topic) - 1U);
+    }
+
+    for (uint16_t i = 0; i < topic_copy_length; i++) {
+        topic[i] = (char)packet[index + i];
+    }
+    topic[topic_copy_length] = '\0';
+
+    index += topic_length;
+
+    if ((packet[0] & 0x06U) != 0U) {
+        if ((uint16_t)(index + 2U) > length) {
+            return;
+        }
+        index += 2U;
+    }
+
+    if (index > length) {
+        return;
+    }
+
+    for (uint16_t i = 0; topic[i] != '\0'; i++) {
+        wifi_append_to_ascii_buffer(tcp_received_message_buffer, tcp_received_message_buffer_size, &tcp_received_message_buffer_index, (uint8_t)topic[i]);
+    }
+    wifi_append_to_ascii_buffer(tcp_received_message_buffer, tcp_received_message_buffer_size, &tcp_received_message_buffer_index, ' ');
+
+    while (index < length) {
+        wifi_append_to_ascii_buffer(tcp_received_message_buffer, tcp_received_message_buffer_size, &tcp_received_message_buffer_index, packet[index++]);
+    }
+}
+
+static void wifi_handle_ipd_byte(uint8_t byte) {
+    if (!ipd_collecting_payload) {
+        if (ipd_prefix_index == 0U) {
+            if (byte == '+') {
+                ipd_packet_buffer[ipd_prefix_index++] = byte;
+            }
+            return;
+        }
+
+        if (ipd_prefix_index < 4U) {
+            ipd_packet_buffer[ipd_prefix_index++] = byte;
+            if ((ipd_prefix_index == 2U && byte != 'I') ||
+                (ipd_prefix_index == 3U && byte != 'P') ||
+                (ipd_prefix_index == 4U && byte != 'D')) {
+                wifi_reset_ipd_parser();
+            }
+            return;
+        }
+
+        if (ipd_prefix_index == 4U) {
+            if (byte == ',') {
+                ipd_prefix_index++;
+                ipd_length_buffer_index = 0U;
+                ipd_length_buffer[0] = '\0';
+                return;
+            }
+            wifi_reset_ipd_parser();
+            return;
+        }
+
+        if (byte == ':') {
+            ipd_expected_length = (uint16_t)atoi((char *)ipd_length_buffer);
+            ipd_collecting_payload = 1U;
+            ipd_payload_index = 0U;
+            return;
+        }
+
+        if (byte >= '0' && byte <= '9' && ipd_length_buffer_index < (uint8_t)(sizeof(ipd_length_buffer) - 1U)) {
+            ipd_length_buffer[ipd_length_buffer_index++] = byte;
+            ipd_length_buffer[ipd_length_buffer_index] = '\0';
+            return;
+        }
+
+        wifi_reset_ipd_parser();
+        return;
+    }
+
+    if (ipd_payload_index < (uint16_t)sizeof(ipd_packet_buffer)) {
+        ipd_packet_buffer[ipd_payload_index] = byte;
+    }
+    ipd_payload_index++;
+
+    if (ipd_payload_index >= ipd_expected_length) {
+        wifi_store_mqtt_command(ipd_packet_buffer, (ipd_expected_length < (uint16_t)sizeof(ipd_packet_buffer)) ? ipd_expected_length : (uint16_t)sizeof(ipd_packet_buffer));
+        wifi_reset_ipd_parser();
+    }
+}
 
 // WiFi receive callback for handling incoming data
 static void wifi_rx_callback(uint8_t byte) {
+    uint8_t raw_byte = byte;
+    uint8_t ascii_byte = byte;
+
     if (wifi_dataBufferIndex < WIFI_DATABUFFERSIZE - 1) {
-        wifi_dataBuffer[wifi_dataBufferIndex++] = byte;
+        if (ascii_byte == 0U) {
+            ascii_byte = ' ';
+        }
+        if (ascii_byte == '\r' || ascii_byte == '\n' || (ascii_byte >= 0x20U && ascii_byte <= 0x7EU)) {
+            wifi_dataBuffer[wifi_dataBufferIndex++] = ascii_byte;
+            wifi_dataBuffer[wifi_dataBufferIndex] = '\0';
+        }
     }
+
+    wifi_handle_ipd_byte(raw_byte);
 }
 
 // Command callback (for TCP transmit)
 void wifi_command_callback(uint8_t byte) {
     if (wifi_dataBufferIndex < WIFI_DATABUFFERSIZE - 1) {
-        wifi_dataBuffer[wifi_dataBufferIndex++] = byte;
+        if (byte == 0U) {
+            byte = ' ';
+        }
+        if (byte == '\r' || byte == '\n' || (byte >= 0x20U && byte <= 0x7EU)) {
+            wifi_dataBuffer[wifi_dataBufferIndex++] = byte;
+            wifi_dataBuffer[wifi_dataBufferIndex] = '\0';
+        }
     }
 }
 
@@ -184,11 +375,15 @@ WIFI_ERROR_MESSAGE_t wifi_command_join_AP(char *ssid, char *password) {
 }
 
 // AT+CIPSTART - Create TCP connection
-WIFI_ERROR_MESSAGE_t wifi_command_create_TCP_connection(char *IP, uint16_t port, WIFI_TCP_Callback_t callback_when_message_received, char *received_message_buffer) {
+WIFI_ERROR_MESSAGE_t wifi_command_create_TCP_connection(char *IP, uint16_t port, WIFI_TCP_Callback_t callback_when_message_received, char *received_message_buffer, uint16_t received_message_buffer_size) {
     char cmd[128];
     snprintf(cmd, sizeof(cmd), "AT+CIPSTART=\"TCP\",\"%s\",%u", IP, port);
     
     _callback = callback_when_message_received;
+    tcp_received_message_buffer = received_message_buffer;
+    tcp_received_message_buffer_size = received_message_buffer_size;
+    wifi_clear_tcp_received_buffer();
+    wifi_reset_ipd_parser();
     WIFI_ERROR_MESSAGE_t result = wifi_send_command(cmd, "CONNECTED", 10000);
     
     return result;
