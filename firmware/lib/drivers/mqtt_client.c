@@ -1,109 +1,183 @@
 #include "mqtt_client.h"
 #include "wifi.h"
-#include "../MQTTPacket/MQTTPacket.h"
+
+#include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+#include <util/delay.h>
 
-#define MQTT_BUF_SIZE 256        // Buffer size for outgoing MQTT packets
-#define MQTT_MESSAGE_BUF_SIZE 128 // Buffer size for incoming message payloads
+// Shared with main.c – declared there, referenced here for connection state
+// and the receive buffer that the WiFi driver writes inbound bytes into.
+extern bool     mqtt_connected;
+extern char     mqtt_rx_buffer[];
+extern bool     mqtt_command_received;
+extern uint16_t setup_id;
 
-static uint8_t mqtt_send_buf[MQTT_BUF_SIZE];          // Buffer used to serialize outgoing MQTT packets
-static uint8_t mqtt_recv_buf[MQTT_BUF_SIZE];          // Buffer reserved for incoming MQTT packets
-static char mqtt_message_buf[MQTT_MESSAGE_BUF_SIZE];  // Buffer for the incoming message payload string
-static MQTT_MessageCallback_t mqtt_callback = NULL;   // User-registered callback for incoming messages
+// ── Internal helpers ──────────────────────────────────────────────────────────
 
-/**
- * @brief Internal callback passed to the WiFi driver.
- *        Invoked when a complete TCP message is received.
- *        Forwards the payload to the user-registered MQTT callback.
- */
-static void on_message_received(void)
+// Encode 'value' using the MQTT variable-length encoding scheme (7 bits per
+// byte, MSB=1 means another byte follows). Writes encoded bytes into 'out'
+// and returns the number of bytes written (1–4).
+static uint8_t encode_remaining_length(uint16_t value, uint8_t *out)
 {
-    if (mqtt_callback != NULL)
-        mqtt_callback(mqtt_message_buf);
+    uint8_t idx = 0;
+    do {
+        uint8_t encoded = value % 128;
+        value /= 128;
+        if (value > 0) encoded |= 0x80; // signal that more bytes follow
+        out[idx++] = encoded;
+    } while (value > 0 && idx < 4);
+    return idx;
 }
 
-MQTT_ERROR_t mqtt_init(char *broker_ip, uint16_t port, char *client_id)
+// Build and transmit an MQTT CONNECT packet.
+// Uses protocol level 4 (MQTT 3.1.1), clean-session flag, 60-second keep-alive.
+// No username, password, or will message – plain anonymous connection.
+static bool send_connect_packet(void)
 {
-    // Establish TCP connection to the broker over WiFi
-    WIFI_ERROR_MESSAGE_t wifi_error = wifi_command_create_TCP_connection(
-        broker_ip, port, on_message_received, mqtt_message_buf
-    );
-    if (wifi_error != WIFI_OK)
-        return MQTT_ERROR_CONNECT;
+    uint8_t packet[128];
+    uint8_t idx = 0;
 
-    // Configure MQTT CONNECT packet options
-    MQTTPacket_connectData data = MQTTPacket_connectData_initializer;
-    data.clientID.cstring = client_id;
-    data.keepAliveInterval = 60; // Broker will disconnect if no message within 60 seconds
-    data.cleansession = 1;       // Start with a clean session, no persistent state
+    uint8_t  rem_bytes[4];
+    uint16_t client_id_len = strlen(MQTT_CLIENT_ID);
+    // Remaining length = fixed header (10) + 2-byte client-id length prefix + client-id
+    uint16_t remaining = 10 + 2 + client_id_len;
+    uint8_t  rem_size  = encode_remaining_length(remaining, rem_bytes);
 
-    // Serialize the CONNECT packet into the send buffer
-    int len = MQTTSerialize_connect(mqtt_send_buf, MQTT_BUF_SIZE, &data);
-    if (len <= 0)
-        return MQTT_ERROR_CONNECT;
+    packet[idx++] = 0x10; // CONNECT control packet type
+    for (uint8_t i = 0; i < rem_size; i++) packet[idx++] = rem_bytes[i];
 
-    // Transmit the CONNECT packet to the broker via TCP
-    WIFI_ERROR_MESSAGE_t send_error = wifi_command_TCP_transmit(mqtt_send_buf, len);
-    if (send_error != WIFI_OK)
-        return MQTT_ERROR_CONNECT;
+    // Protocol name "MQTT" (4 bytes) + level 4
+    packet[idx++] = 0x00; packet[idx++] = 0x04;
+    packet[idx++] = 'M';  packet[idx++] = 'Q';
+    packet[idx++] = 'T';  packet[idx++] = 'T';
+    packet[idx++] = 0x04; // protocol level: MQTT 3.1.1
+    packet[idx++] = 0x02; // connect flags: clean session only
+    packet[idx++] = 0x00; packet[idx++] = 60; // keep-alive: 60 seconds
 
-    return MQTT_OK;
+    // Client identifier
+    packet[idx++] = client_id_len >> 8;
+    packet[idx++] = client_id_len & 0xFF;
+    memcpy(&packet[idx], MQTT_CLIENT_ID, client_id_len);
+    idx += client_id_len;
+
+    return wifi_command_TCP_transmit(packet, idx) == WIFI_OK;
 }
 
-MQTT_ERROR_t mqtt_publish(const char *topic, const char *payload)
+// Build and transmit an MQTT SUBSCRIBE packet for the device command topic.
+// Topic pattern: "farm/<setup_id>/cmd"  –  QoS 1 so commands are not lost.
+// Packet identifier 0x0001 is fixed; acceptable for a single active subscription.
+static bool send_subscribe_packet(void)
 {
-    // Wrap the topic string in an MQTTString structure as required by MQTTPacket
-    MQTTString topic_str = MQTTString_initializer;
-    topic_str.cstring = (char *)topic;
+    uint8_t packet[128];
+    uint8_t idx = 0;
 
-    // Serialize the PUBLISH packet into the send buffer
-    int len = MQTTSerialize_publish(
-        mqtt_send_buf, MQTT_BUF_SIZE,
-        0,              // dup: not a duplicate
-        1,              // QoS 1: guaranteed at least once delivery
-        0,              // retain: broker does not retain this message
-        0,              // packet id: only relevant for QoS > 0 acknowledgements
-        topic_str,
-        (uint8_t *)payload, strlen(payload)
-    );
-    if (len <= 0)
-        return MQTT_ERROR_PUBLISH;
+    char     topic[32];
+    snprintf(topic, sizeof(topic), "farm/%u/cmd", setup_id);
+    uint16_t topic_len = strlen(topic);
 
-    // Transmit the PUBLISH packet to the broker via TCP
-    WIFI_ERROR_MESSAGE_t error = wifi_command_TCP_transmit(mqtt_send_buf, len);
-    if (error != WIFI_OK)
-        return MQTT_ERROR_PUBLISH;
+    // Remaining = 2 (packet id) + 2 (topic len prefix) + topic + 1 (requested QoS)
+    uint16_t remaining = 2 + 2 + topic_len + 1;
 
-    return MQTT_OK;
+    uint8_t rem_bytes[4];
+    uint8_t rem_size = encode_remaining_length(remaining, rem_bytes);
+
+    packet[idx++] = 0x82; // SUBSCRIBE control packet (0x80 | 0x02)
+    for (uint8_t i = 0; i < rem_size; i++) packet[idx++] = rem_bytes[i];
+
+    // Fixed packet identifier
+    packet[idx++] = 0x00;
+    packet[idx++] = 0x01;
+
+    // Topic filter
+    packet[idx++] = topic_len >> 8;
+    packet[idx++] = topic_len & 0xFF;
+    memcpy(&packet[idx], topic, topic_len);
+    idx += topic_len;
+
+    packet[idx++] = 0x01; // subscribe at QoS 1
+
+    return wifi_command_TCP_transmit(packet, idx) == WIFI_OK;
 }
 
-MQTT_ERROR_t mqtt_subscribe(const char *topic, MQTT_MessageCallback_t callback)
+// ── Public API ────────────────────────────────────────────────────────────────
+
+bool mqtt_connect(void)
 {
-    // Store the user callback to be invoked on incoming messages
-    mqtt_callback = callback;
+    mqtt_rx_buffer[0] = '\0';
 
-    // Wrap the topic string in an MQTTString structure as required by MQTTPacket
-    MQTTString topic_str = MQTTString_initializer;
-    topic_str.cstring = (char *)topic;
-    int req_qos = 1; // Request QoS 1 for the subscription
+    // Open the TCP socket to the broker; the rx buffer receives all inbound bytes.
+    if (wifi_command_create_TCP_connection(MQTT_BROKER_IP, MQTT_BROKER_PORT,
+                                           NULL, mqtt_rx_buffer) != WIFI_OK) {
+        printf("TCP connect to broker failed\n");
+        return false;
+    }
 
-    // Serialize the SUBSCRIBE packet into the send buffer
-    int len = MQTTSerialize_subscribe(
-        mqtt_send_buf, MQTT_BUF_SIZE,
-        0,          // dup: not a duplicate
-        1,          // packet id
-        1,          // count: number of topics to subscribe to
-        &topic_str,
-        &req_qos
-    );
-    if (len <= 0)
-        return MQTT_ERROR_SUBSCRIBE;
+    _delay_ms(1000); // give the socket time to fully establish before sending CONNECT
 
-    // Transmit the SUBSCRIBE packet to the broker via TCP
-    WIFI_ERROR_MESSAGE_t error = wifi_command_TCP_transmit(mqtt_send_buf, len);
-    if (error != WIFI_OK)
-        return MQTT_ERROR_SUBSCRIBE;
+    if (!send_connect_packet()) {
+        printf("MQTT CONNECT packet failed\n");
+        wifi_command_close_TCP_connection();
+        return false;
+    }
 
-    return MQTT_OK;
+    _delay_ms(1000); // wait for CONNACK before subscribing
+
+    if (!send_subscribe_packet()) {
+        // Non-fatal: telemetry still works without a command subscription
+        printf("MQTT SUBSCRIBE failed – command reception disabled\n");
+    }
+
+    _delay_ms(500); // wait for SUBACK
+
+    printf("MQTT connected to %s:%u\n", MQTT_BROKER_IP, MQTT_BROKER_PORT);
+    return true;
+}
+
+bool mqtt_publish(const char *topic, const char *payload)
+{
+    uint8_t packet[512];
+    uint8_t idx = 0;
+
+    uint16_t topic_len   = strlen(topic);
+    uint16_t payload_len = strlen(payload);
+    // Remaining = 2-byte topic length prefix + topic + payload (QoS 0 has no packet id)
+    uint16_t remaining   = 2 + topic_len + payload_len;
+
+    uint8_t rem_bytes[4];
+    uint8_t rem_size = encode_remaining_length(remaining, rem_bytes);
+
+    packet[idx++] = 0x30; // PUBLISH, QoS 0, no retain
+    for (uint8_t i = 0; i < rem_size; i++) packet[idx++] = rem_bytes[i];
+
+    packet[idx++] = topic_len >> 8;
+    packet[idx++] = topic_len & 0xFF;
+    memcpy(&packet[idx], topic, topic_len);
+    idx += topic_len;
+
+    memcpy(&packet[idx], payload, payload_len);
+    idx += payload_len;
+
+    return wifi_command_TCP_transmit(packet, idx) == WIFI_OK;
+}
+
+void mqtt_poll_incoming(void)
+{
+    if (!mqtt_connected) return;
+
+    // The WiFi driver writes raw bytes into mqtt_rx_buffer; an empty first byte
+    // means nothing has arrived since the last time we cleared the buffer.
+    if (mqtt_rx_buffer[0] == '\0') return;
+
+    // Set the flag if the incoming message looks like a device command.
+    // main.c checks this flag each iteration and calls device_handle_command().
+    if (strstr(mqtt_rx_buffer, "farm/") != NULL &&
+        strstr(mqtt_rx_buffer, "/cmd")  != NULL)
+    {
+        mqtt_command_received = true;
+    }
+
+    // Clear buffer so the next poll sees fresh data.
+    mqtt_rx_buffer[0] = '\0';
 }
