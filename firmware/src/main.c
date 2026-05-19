@@ -96,7 +96,7 @@ int main(void)
         // mqtt_poll_incoming() sets mqtt_command_received and fills mqtt_rx_buffer.
         mqtt_poll_incoming();
         if (mqtt_command_received) {
-            commands_handle_backend_command(mqtt_rx_buffer);
+            commands_handle_command(mqtt_rx_buffer);
             mqtt_command_received = false;
 }
 
