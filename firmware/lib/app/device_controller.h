@@ -2,46 +2,49 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "device_context.h"
+#include "interfaces.h"
 
 // Reads temperature, humidity, light and soil moisture from their respective
-// sensors into the provided output pointers. All six pointers must be non-NULL.
-// Does not touch the display or any other output — pure sensor acquisition.
+// hardware drivers into the provided output pointers. All six must be non-NULL.
+// Used as the real implementation of sensor_interface_t.read in main.
 void device_read_sensors(uint8_t *temp_int, uint8_t *temp_dec,
                          uint8_t *hum_int,  uint8_t *hum_dec,
                          uint16_t *light_value, uint16_t *soil_value);
 
-// Reads all sensors, updates the 7-segment display with the current temperature,
-// and prints all values to the serial console. Called periodically from the main
-// loop for local monitoring without requiring a connected dashboard.
-void device_display_sensor_values(void);
+// Reads all sensors via the injected sensor interface, updates the 7-segment
+// display and prints values to the logger. Called periodically from the main loop.
+void device_display_sensor_values(const sensor_interface_t *sensors,
+                                  const logger_interface_t *logger);
 
-// Serialises all sensor readings into a JSON telemetry payload and writes the
-// result into the caller-supplied buffer. Temperature and humidity are scaled
-// ×10 to preserve one decimal place without floating point (23.5 °C → 235).
-// The backend must divide by 10 to recover the real value.
-// Output format:
-// {"setup_id":...,"sensor_id":...,"temperature":...,"humidity":...,"light":...,"soil_moisture":...}
+// Serialises all sensor readings into a JSON telemetry payload.
+// Temperature and humidity are scaled x10 (23.5 C stored as 235).
+// Output: {"setup_id":...,"sensor_id":...,"temperature":...,"humidity":...,"light":...,"soil_moisture":...}
 void device_build_telemetry_payload(char *payload, size_t size,
                                     uint8_t temp_int, uint8_t temp_dec,
                                     uint8_t hum_int,  uint8_t hum_dec,
                                     uint16_t light_value, uint16_t soil_value,
                                     uint16_t setup_id);
 
-// Serialises a heartbeat payload indicating the device is online and writes it
-// into the caller-supplied buffer.
-// Output format: {"setup_id":...,"status":"online"}
+// Serialises a heartbeat payload.
+// Output: {"setup_id":...,"status":"online"}
 void device_build_heartbeat_payload(char *payload, size_t size, uint16_t setup_id);
 
-// Reads all sensors, builds the JSON telemetry payload and publishes it to
-// "farm/<setup_id>/inf". Sets ctx->mqtt_connected to false if the publish fails
-// so the main loop knows to trigger a reconnection attempt.
-void device_send_telemetry(device_context_t *ctx);
+// Reads all sensors, builds the JSON payload and publishes it via the injected
+// MQTT interface. Sets ctx->mqtt_connected to false on publish failure.
+void device_send_telemetry(device_context_t *ctx,
+                           const mqtt_interface_t *mqtt,
+                           const sensor_interface_t *sensors,
+                           const logger_interface_t *logger);
 
-// Builds a heartbeat payload and publishes it to "farm/<setup_id>/status".
-// Retries once on transient failure before marking the connection as lost in ctx.
-void device_send_heartbeat(device_context_t *ctx);
+// Builds a heartbeat payload and publishes it via the injected MQTT interface.
+// Retries once before marking the connection as lost.
+void device_send_heartbeat(device_context_t *ctx,
+                           const mqtt_interface_t *mqtt,
+                           const logger_interface_t *logger);
 
-// Parses an inbound MQTT command payload and executes the requested actuator
-// action. Currently supports water pump commands:
-// {"actuator":"water_pump","amount_ml":<n>}
-void device_handle_command(const char *payload);
+// Parses an inbound command payload and dispatches the actuator action
+// via the injected pump interface.
+// Supports: {"actuator":"water_pump","amount_ml":<n>}
+void device_handle_command(const char *payload,
+                           const pump_interface_t *pump,
+                           const logger_interface_t *logger);
