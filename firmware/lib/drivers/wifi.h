@@ -135,6 +135,15 @@ WIFI_ERROR_MESSAGE_t wifi_command_TCP_transmit(uint8_t *data, uint16_t length);
 WIFI_ERROR_MESSAGE_t wifi_command_quit_AP();
 
 /**
+ * @brief Send AT+RST to reboot the module and wait for "ready".
+ *        Call this before wifi_configure() if the module may be in an
+ *        unknown state (e.g. after a microcontroller reset without power cycle).
+ *
+ * @return WIFI_ERROR_MESSAGE_t WIFI_OK when "ready" is received, error otherwise.
+ */
+WIFI_ERROR_MESSAGE_t wifi_command_reset(void);
+
+/**
  * @brief  Closes thhe TCP connection
  * @return WIFI_ERROR_MESSAGE_t Error message based on the response from the module.
  */

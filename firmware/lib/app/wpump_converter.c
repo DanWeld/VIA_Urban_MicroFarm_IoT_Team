@@ -1,13 +1,21 @@
 #include "wpump_converter.h"
 #include <stdint.h>
 
+// Measured flow rate: ~39 ml per second at nominal voltage.
+// base_time = (ml * 1000) / 39  gives milliseconds for the requested volume.
 #define MILLI_SECOND_PER_SECOND 1000UL
 #define FACTOR 39UL
 
+
+// The pump takes a moment to reach full flow, and the relay has a small
+// cut-off delay. The compensation table corrects for these non-linearities:
+// small volumes need extra time (pump not yet at speed), large volumes need
+// less (momentum carries flow after switch-off). Values were determined by
+// physical calibration on the target hardware.
 typedef struct
 {
-    uint32_t max_ml;
-    int16_t compensation_ms;
+    uint32_t max_ml;// upper bound of this compensation band (inclusive)
+    int16_t compensation_ms;// signed correction added to the base time
 } wpump_compensation_step_t;
 
 static const wpump_compensation_step_t wpump_compensation_table[] = {
@@ -29,7 +37,7 @@ static const wpump_compensation_step_t wpump_compensation_table[] = {
     {400U, -2700},
     {430U, -2800},
     {460U, -3000},
-    {UINT32_MAX, -3700}
+    {UINT32_MAX, -3700}// catch-all for any value above 460 ml
 };
 
 static int16_t get_compensation(uint32_t ml)
